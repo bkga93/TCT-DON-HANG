@@ -23,10 +23,10 @@ Khi người dùng gõ lệnh `/save`, hoặc khi bạn vừa hoàn thành một
 
 ### [1. BỐI CẢNH LÀM VIỆC - CONTEXT]
 ```json
-{"project_status":"Hoàn thành","current_goal":"Đã bàn giao ứng dụng và hướng dẫn GitHub","core_logic_rules":"1. Quét mọi loại mã (QR, Barcode). 2. Trích xuất thông tin từ ảnh (OCR). 3. Hiển thị kết quả lên màn hình. 4. Đẩy project lên GitHub.","active_variables":{"project_name":"TCT DON HANG"}}
+{"project_status":"Đang nâng cấp UI/OCR","current_goal":"Giao diện iPhone-style và sửa lỗi treo OCR","core_logic_rules":"1. Camera toàn màn hình. 2. Nút Shutter tròn trắng. 3. Pre-load OCR khi mở camera.","active_variables":{"version":"1.2.0"}}
 ```
 
 ### [2. PHIÊN BẢN - VERSIONS]
 ```json
-{"v1.0.0":{"date":"2026-04-12","description":"Khởi tạo dự án và cấu trúc cơ bản"},"v1.0.1":{"date":"2026-04-12","description":"Hoàn thành giao diện và logic quét/OCR (CDN version)"}}
+{"v1.0.0":{"date":"2026-04-12","description":"Khởi tạo dự án"},"v1.1.0":{"date":"2026-04-12","description":"Cập nhật quy trình Chụp & Phân tích"},"v1.2.0":{"date":"2026-04-12","description":"Giao diện iPhone-style & Sửa lỗi treo OCR"}}
 ```

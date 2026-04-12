@@ -2,8 +2,8 @@
 <html lang="vi">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TCT DON HANG - Scanner & OCR</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>TCT DON HANG - Camera Pro</title>
     <link rel="stylesheet" href="style.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -14,74 +14,83 @@
 </head>
 <body>
     <div class="app-container">
-        <header>
-            <div class="logo">
-                <i data-lucide="scan-barcode"></i>
-                <h1>TCT DON HANG</h1>
-            </div>
-            <div class="status-badge" id="app-status">
-                <span class="pulse"></span> Ready
-            </div>
-        </header>
-
-        <main>
-            <section class="scanner-section">
-                <div class="scanner-wrapper">
-                    <div id="reader"></div>
-                    <div class="scanner-overlay">
-                        <div class="corner top-left"></div>
-                        <div class="corner top-right"></div>
-                        <div class="corner bottom-left"></div>
-                        <div class="corner bottom-right"></div>
-                        <div class="scan-line"></div>
-                    </div>
+        <!-- Main Dashboard (Home) -->
+        <main id="dashboard" class="dashboard">
+            <header>
+                <div class="logo">
+                    <i data-lucide="package"></i>
+                    <h1>TCT DON HANG</h1>
                 </div>
-                
-                <div class="controls">
-                    <button id="start-btn" class="primary-btn">
-                        <i data-lucide="play"></i> Mở Camera
-                    </button>
-                    <button id="capture-btn" class="accent-btn hidden">
-                        <i data-lucide="camera"></i> Chụp & Phân Tích Toàn Bộ
-                    </button>
-                    <button id="stop-btn" class="secondary-btn hidden">
-                        <i data-lucide="square"></i> Tắt Camera
-                    </button>
-                </div>
-            </section>
+                <button id="open-camera-btn" class="main-action-btn">
+                    <i data-lucide="camera"></i> Mở Camera
+                </button>
+            </header>
 
-            <section id="preview-section" class="preview-section hidden">
+            <section class="history-section">
                 <div class="section-header">
-                    <h2><i data-lucide="image"></i> Ảnh đã chụp</h2>
-                    <button id="retake-btn" class="text-btn">Chụp lại</button>
+                    <h2><i data-lucide="history"></i> Lịch sử quét</h2>
+                    <button id="clear-btn" class="text-btn">Xóa hết</button>
                 </div>
-                <div class="preview-container">
-                    <img id="captured-image" src="" alt="Captured">
-                </div>
-            </section>
-
-            <section class="results-section">
-                <div class="section-header">
-                    <h2><i data-lucide="list"></i> Kết quả Quét</h2>
-                    <button id="clear-btn" class="text-btn">Xóa tất cả</button>
-                </div>
-                
                 <div id="results-list" class="results-list">
                     <div class="empty-state">
-                        <i data-lucide="box"></i>
-                        <p>Chưa có dữ liệu. Hãy quét mã hoặc văn bản.</p>
+                        <i data-lucide="scan"></i>
+                        <p>Nhấn "Mở Camera" để bắt đầu</p>
                     </div>
                 </div>
             </section>
         </main>
 
-        <div id="ocr-loader" class="loader-overlay hidden">
-            <div class="loader-content">
-                <div class="spinner"></div>
-                <p>Đang trích xuất thông tin...</p>
-                <div class="progress-bar">
-                    <div id="ocr-progress" class="progress-fill"></div>
+        <!-- Fullscreen Camera Interface -->
+        <div id="camera-interface" class="camera-interface hidden">
+            <div id="reader"></div>
+            
+            <!-- Camera Overlays -->
+            <div class="camera-ui">
+                <div class="top-bar">
+                    <button id="close-camera-btn" class="icon-btn">
+                        <i data-lucide="x"></i>
+                    </button>
                 </div>
+
+                <div class="viewfinder">
+                    <div class="viewfinder-corners"></div>
+                </div>
+
+                <div class="bottom-bar">
+                    <div class="shutter-container">
+                        <button id="shutter-btn" class="shutter-btn"></button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Analysis HUD -->
+            <div id="analysis-hud" class="analysis-hud hidden">
+                <div class="spinner-ios"></div>
+                <p id="hud-message">Đang nạp bộ máy OCR...</p>
+                <div class="hud-progress">
+                    <div id="hud-progress-bar" class="hud-progress-fill"></div>
+                </div>
+            </div>
+            
+            <div id="flash-effect" class="flash-effect"></div>
+        </div>
+
+        <!-- Result Drawer (Sheet) -->
+        <div id="result-drawer" class="result-drawer hidden">
+            <div class="drawer-handle"></div>
+            <div class="drawer-header">
+                <h3>Kết quả phân tích</h3>
+                <button id="close-drawer-btn" class="icon-btn">
+                    <i data-lucide="chevron-down"></i>
+                </button>
+            </div>
+            <div id="drawer-content" class="drawer-content">
+                <!-- Results cards go here -->
+            </div>
+            <div class="drawer-footer">
+                <button id="copy-btn" class="secondary-btn">
+                    <i data-lucide="copy"></i> Copy tất cả
+                </button>
             </div>
         </div>
 
