@@ -42,32 +42,37 @@ function updateHUD(message, progress = null) {
 }
 
 // --- OCR Engine Management ---
-// Singleton pattern to prevent re-initializing
-async function initOCR() {
+async function initOCR(silent = false) {
     if (tesseractWorker) return tesseractWorker;
     
-    analysisHud.classList.remove('hidden');
-    updateHUD('Đang nạp bộ máy OCR...', 0.1);
+    if (!silent) {
+        analysisHud.classList.remove('hidden');
+        updateHUD('Đang nạp bộ máy OCR...', 0.1);
+    }
     
     try {
         const worker = await Tesseract.createWorker({
-            corePath: 'https://unpkg.com/tesseract.js-core@v5.0.0/tesseract-core.wasm.js', // CDN cụ thể để tránh lỗi nạp
+            corePath: 'https://unpkg.com/tesseract.js-core@v5.0.0/tesseract-core.wasm.js',
             logger: m => {
-                if (m.status === 'loading tesseract core') updateHUD('Đang nạp lõi xử lý...', 0.3);
-                if (m.status === 'loading language traineddata') updateHUD('Đang nạp ngôn ngữ...', 0.6);
-                if (m.status === 'initializing api') updateHUD('Đang khởi tạo ứng dụng...', 0.9);
+                if (!silent) {
+                    if (m.status === 'loading tesseract core') updateHUD('Đang nạp lõi xử lý...', 0.3);
+                    if (m.status === 'loading language traineddata') updateHUD('Đang nạp ngôn ngữ...', 0.6);
+                    if (m.status === 'initializing api') updateHUD('Đang khởi tạo ứng dụng...', 0.9);
+                }
             }
         });
         
         await worker.loadLanguage('vie+eng');
         await worker.initialize('vie+eng');
         tesseractWorker = worker;
-        updateHUD('Đã sẵn sàng!', 1);
-        setTimeout(() => analysisHud.classList.add('hidden'), 500);
+        if (!silent) {
+            updateHUD('Đã sẵn sàng!', 1);
+            setTimeout(() => analysisHud.classList.add('hidden'), 500);
+        }
         return worker;
     } catch (err) {
         console.error(err);
-        showToast('Lỗi nạp OCR. Hãy thử load lại trang.');
+        if (!silent) showToast('Lỗi nạp OCR.');
         analysisHud.classList.add('hidden');
         return null;
     }
@@ -80,8 +85,8 @@ async function openCamera() {
     
     html5QrCode = new Html5Qrcode("reader");
     
-    // Bắt đầu nạp OCR ngay khi mở camera (tiết kiệm thời gian)
-    initOCR();
+    // Bắt đầu nạp OCR ngầm (không hiện thông báo cho đến khi chụp)
+    initOCR(true);
 
     try {
         const config = { 
@@ -148,7 +153,7 @@ async function captureAndAnalyze() {
         } catch(e) { }
 
         // B. QUÉT VĂN BẢN (OCR)
-        const worker = await initOCR();
+        const worker = await initOCR(false); // Nếu chưa xong thì hiện thông báo lúc này
         if (worker) {
             updateHUD('Đang trích xuất chữ...', 0.6);
             const { data: { text } } = await worker.recognize(imageDataUrl);

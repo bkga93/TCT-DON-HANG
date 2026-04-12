@@ -23,7 +23,7 @@ Khi người dùng gõ lệnh `/save`, hoặc khi bạn vừa hoàn thành một
 
 ### [1. BỐI CẢNH LÀM VIỆC - CONTEXT]
 ```json
-{"project_status":"Đang nâng cấp UI/OCR","current_goal":"Giao diện iPhone-style và sửa lỗi treo OCR","core_logic_rules":"1. Camera toàn màn hình. 2. Nút Shutter tròn trắng. 3. Pre-load OCR khi mở camera.","active_variables":{"version":"1.2.0"}}
+{"project_status":"Hoàn thiện UI iPhone-style","current_goal":"Tối ưu trải nghiệm camera và sửa lỗi nạp OCR","core_logic_rules":"1. Camera full-screen. 2. Nạp OCR ngầm (Silent load). 3. Giao diện dạng ngăn kéo kết quả.","active_variables":{"version":"1.2.1"}}
 ```
 
 ### [2. PHIÊN BẢN - VERSIONS]
