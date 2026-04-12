@@ -39,14 +39,24 @@
                 
                 <div class="controls">
                     <button id="start-btn" class="primary-btn">
-                        <i data-lucide="play"></i> Bắt đầu Quét
+                        <i data-lucide="play"></i> Mở Camera
+                    </button>
+                    <button id="capture-btn" class="accent-btn hidden">
+                        <i data-lucide="camera"></i> Chụp & Phân Tích Toàn Bộ
                     </button>
                     <button id="stop-btn" class="secondary-btn hidden">
-                        <i data-lucide="square"></i> Dừng
+                        <i data-lucide="square"></i> Tắt Camera
                     </button>
-                    <button id="capture-ocr-btn" class="accent-btn" disabled>
-                        <i data-lucide="camera"></i> Quét Văn Bản (OCR)
-                    </button>
+                </div>
+            </section>
+
+            <section id="preview-section" class="preview-section hidden">
+                <div class="section-header">
+                    <h2><i data-lucide="image"></i> Ảnh đã chụp</h2>
+                    <button id="retake-btn" class="text-btn">Chụp lại</button>
+                </div>
+                <div class="preview-container">
+                    <img id="captured-image" src="" alt="Captured">
                 </div>
             </section>
 
