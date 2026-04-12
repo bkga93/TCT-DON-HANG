@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TCT DON HANG - Scanner & OCR</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/html5-qrcode"></script>
+    <script src="https://unpkg.com/tesseract.js@5.0.3/dist/tesseract.min.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body>
+    <div class="app-container">
+        <header>
+            <div class="logo">
+                <i data-lucide="scan-barcode"></i>
+                <h1>TCT DON HANG</h1>
+            </div>
+            <div class="status-badge" id="app-status">
+                <span class="pulse"></span> Ready
+            </div>
+        </header>
+
+        <main>
+            <section class="scanner-section">
+                <div class="scanner-wrapper">
+                    <div id="reader"></div>
+                    <div class="scanner-overlay">
+                        <div class="corner top-left"></div>
+                        <div class="corner top-right"></div>
+                        <div class="corner bottom-left"></div>
+                        <div class="corner bottom-right"></div>
+                        <div class="scan-line"></div>
+                    </div>
+                </div>
+                
+                <div class="controls">
+                    <button id="start-btn" class="primary-btn">
+                        <i data-lucide="play"></i> Bắt đầu Quét
+                    </button>
+                    <button id="stop-btn" class="secondary-btn hidden">
+                        <i data-lucide="square"></i> Dừng
+                    </button>
+                    <button id="capture-ocr-btn" class="accent-btn" disabled>
+                        <i data-lucide="camera"></i> Quét Văn Bản (OCR)
+                    </button>
+                </div>
+            </section>
+
+            <section class="results-section">
+                <div class="section-header">
+                    <h2><i data-lucide="list"></i> Kết quả Quét</h2>
+                    <button id="clear-btn" class="text-btn">Xóa tất cả</button>
+                </div>
+                
+                <div id="results-list" class="results-list">
+                    <div class="empty-state">
+                        <i data-lucide="box"></i>
+                        <p>Chưa có dữ liệu. Hãy quét mã hoặc văn bản.</p>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <div id="ocr-loader" class="loader-overlay hidden">
+            <div class="loader-content">
+                <div class="spinner"></div>
+                <p>Đang trích xuất thông tin...</p>
+                <div class="progress-bar">
+                    <div id="ocr-progress" class="progress-fill"></div>
+                </div>
+            </div>
+        </div>
+
+        <div id="toast-container"></div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
