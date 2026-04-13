@@ -143,12 +143,21 @@ async function runUltimateScan() {
             zxingResults.forEach(r => results.push({ type: 'qr', text: r.text }));
         }
 
-        // 3. OCR (Tesseract.js)
-        showProgress(60, "Đang nhận diện văn bản (OCR)...");
-        const ocrData = await Tesseract.recognize(canvas, 'eng+vie', {
+        // 3. OCR (Tesseract.js) with Preprocessing
+        showProgress(60, "Đang tối ưu ảnh & Đọc chữ...");
+        
+        // Enhance image for OCR
+        const ocrCanvas = document.createElement('canvas');
+        ocrCanvas.width = canvas.width;
+        ocrCanvas.height = canvas.height;
+        const ocrCtx = ocrCanvas.getContext('2d');
+        ocrCtx.drawImage(canvas, 0, 0);
+        preprocessCanvasForOCR(ocrCanvas);
+
+        const ocrData = await Tesseract.recognize(ocrCanvas, 'vie+eng', {
             logger: m => {
                 if (m.status === 'recognizing text') {
-                    showProgress(60 + (m.progress * 35), `Đang đọc chữ: ${Math.round(m.progress * 100)}%`);
+                    showProgress(60 + (m.progress * 35), `Đang bóc tách chữ: ${Math.round(m.progress * 100)}%`);
                 }
             }
         });
@@ -188,7 +197,6 @@ async function scanZXingIterative(sourceCanvas) {
             const res = await codeReader.decodeFromCanvas(tempCanvas);
             tempResults.push(res);
             
-            // Mask the found area
             const pts = res.resultPoints;
             if (pts && pts.length >= 3) {
                 tempCtx.fillStyle = 'black';
@@ -204,6 +212,30 @@ async function scanZXingIterative(sourceCanvas) {
         }
     }
     return tempResults;
+}
+
+function preprocessCanvasForOCR(canv) {
+    const ctx = canv.getContext('2d');
+    const imageData = ctx.getImageData(0, 0, canv.width, canv.height);
+    const data = imageData.data;
+    
+    // Contrast factor (1.5 - 2.0 is usually good)
+    const contrast = 1.8;
+    const factor = (259 * (contrast + 255)) / (255 * (259 - contrast));
+
+    for (let i = 0; i < data.length; i += 4) {
+        // 1. Grayscale
+        const avg = (data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114);
+        
+        // 2. High Contrast
+        let color = factor * (avg - 128) + 128;
+        
+        // 3. Thresholding (Simple)
+        color = color > 130 ? 255 : 0;
+
+        data[i] = data[i + 1] = data[i + 2] = color;
+    }
+    ctx.putImageData(imageData, 0, 0);
 }
 
 function isUsefulText(text) {
