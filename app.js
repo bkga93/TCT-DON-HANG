@@ -1,5 +1,6 @@
 /**
- * TCT Ultimate Multi-Scanner Pro - Logic v1.2.6.0
+ * TCT Ultimate Multi-Scanner Pro - Logic v1.2.9.0
+ * Kỹ thuật Super Tiling Scan (Phân vùng quét sâu)
  * Thực hiện bởi NVH
  */
 
@@ -82,7 +83,6 @@ switchCamBtn.addEventListener('click', () => {
 // --- Workflow ---
 
 function captureFromVideo() {
-    // Flash effect
     video.style.opacity = '0.5';
     setTimeout(() => video.style.opacity = '1', 100);
 
@@ -99,7 +99,6 @@ function processImageFile(file) {
     reader.onload = (event) => {
         const img = new Image();
         img.onload = () => {
-            // Downscale if too large for performance
             const MAX_WIDTH = 1600;
             let width = img.width;
             let height = img.height;
@@ -121,72 +120,32 @@ function processImageFile(file) {
     reader.readAsDataURL(file);
 }
 
-// --- The Ultimate Scanning Flow ---
+// --- Core Scanning Function ---
 
-async function runUltimateScan() {
-    const results = [];
-    showProgress(0, "Đang khởi tạo...");
+async function scanTarget(targetCanvas) {
+    const findings = [];
     
-    try {
-        // 1. BarcodeDetector (Modern API)
-        showProgress(20, "Đang quét Mã vạch & QR (API Gốc)...");
-        if ('BarcodeDetector' in window) {
+    // 1. Native API
+    if ('BarcodeDetector' in window) {
+        try {
             const formats = ['qr_code', 'code_128', 'code_39', 'ean_13', 'itf', 'upc_a'];
             const detector = new BarcodeDetector({ formats });
-            const detected = await detector.detect(canvas);
-            detected.forEach(d => results.push({ type: d.format === 'qr_code' ? 'qr' : 'barcode', text: d.rawValue }));
-        }
-
-        // 2. ZXing Deep Scan (Always run to ensure nothing is missed)
-        showProgress(40, "Đang quét chuyên sâu QR...");
-        const zxingResults = await scanZXingIterative(canvas);
-        zxingResults.forEach(r => {
-            // Check if already found by native API
-            if (!results.some(existing => existing.text === r.text)) {
-                results.push({ type: 'qr', text: r.text });
-            }
-        });
-
-        // 3. OCR (Tesseract.js) with Preprocessing
-        showProgress(60, "Đang tối ưu ảnh & Đọc chữ...");
-        
-        // Enhance image for OCR
-        const ocrCanvas = document.createElement('canvas');
-        ocrCanvas.width = canvas.width;
-        ocrCanvas.height = canvas.height;
-        const ocrCtx = ocrCanvas.getContext('2d');
-        ocrCtx.drawImage(canvas, 0, 0);
-        preprocessCanvasForOCR(ocrCanvas);
-
-        const ocrData = await Tesseract.recognize(ocrCanvas, 'vie+eng', {
-            logger: m => {
-                if (m.status === 'recognizing text') {
-                    showProgress(60 + (m.progress * 35), `Đang bóc tách chữ: ${Math.round(m.progress * 100)}%`);
-                }
-            }
-        });
-
-        // Filter OCR results (looking for serials, codes, etc.)
-        const lines = ocrData.data.lines;
-        lines.forEach(line => {
-            const cleanText = line.text.trim();
-            if (isUsefulText(cleanText)) {
-                results.push({ type: 'text', text: cleanText });
-            }
-        });
-
-        // Save for Cloud
-        lastCapturedDataURL = canvas.toDataURL('image/jpeg', 0.8);
-
-        showProgress(100, "Hoàn tất!");
-        setTimeout(() => hideProgress(), 500);
-        
-        displayResults(results);
-    } catch (err) {
-        console.error("Scanning Error:", err);
-        hideProgress();
-        alert("Có lỗi xảy ra: " + err.message);
+            const detected = await detector.detect(targetCanvas);
+            detected.forEach(d => findings.push({ type: d.format === 'qr_code' ? 'qr' : 'barcode', text: d.rawValue }));
+        } catch (e) {}
     }
+    
+    // 2. ZXing Iterative Scan
+    try {
+        const zxingResults = await scanZXingIterative(targetCanvas);
+        zxingResults.forEach(r => {
+            if (!findings.some(f => f.text === r.text)) {
+                findings.push({ type: 'qr', text: r.text });
+            }
+        });
+    } catch (e) {}
+
+    return findings;
 }
 
 async function scanZXingIterative(sourceCanvas) {
@@ -221,25 +180,102 @@ async function scanZXingIterative(sourceCanvas) {
     return tempResults;
 }
 
+// --- The Super Tiling Scanning Flow ---
+
+async function runUltimateScan() {
+    const results = [];
+    showProgress(0, "Đang chuẩn bị...");
+    
+    try {
+        // Step 1: Global Scan (Full Image)
+        showProgress(10, "Quét toàn cục...");
+        const globalFindings = await scanTarget(canvas);
+        results.push(...globalFindings);
+
+        // Step 2: Super Tiling Scan (3x3 Grid)
+        showProgress(25, "Bắt đầu quét sâu từng vùng...");
+        const cols = 3;
+        const rows = 3;
+        const tileW = Math.floor(canvas.width / 2); // 50% width to ensure overlap
+        const tileH = Math.floor(canvas.height / 2);
+        
+        const tileCanvas = document.createElement('canvas');
+        tileCanvas.width = tileW;
+        tileCanvas.height = tileH;
+        const tileCtx = tileCanvas.getContext('2d');
+
+        for (let y = 0; y < rows; y++) {
+            for (let x = 0; x < cols; x++) {
+                const step = (y * cols + x);
+                const progress = 25 + Math.floor((step / (rows * cols)) * 30);
+                showProgress(progress, `Đang quét vùng ${step + 1}/9...`);
+
+                const startX = Math.floor(x * (canvas.width - tileW) / (cols - 1));
+                const startY = Math.floor(y * (canvas.height - tileH) / (rows - 1));
+
+                tileCtx.clearRect(0, 0, tileW, tileH);
+                tileCtx.drawImage(canvas, startX, startY, tileW, tileH, 0, 0, tileW, tileH);
+                
+                const tileFindings = await scanTarget(tileCanvas);
+                tileFindings.forEach(f => {
+                    if (!results.some(r => r.text === f.text)) {
+                        results.push(f);
+                    }
+                });
+            }
+        }
+
+        // Step 3: OCR (Tesseract.js) for Text/Serial Numbers
+        showProgress(60, "Tối ưu ảnh & Đọc văn bản...");
+        const ocrCanvas = document.createElement('canvas');
+        ocrCanvas.width = canvas.width;
+        ocrCanvas.height = canvas.height;
+        const ocrCtx = ocrCanvas.getContext('2d');
+        ocrCtx.drawImage(canvas, 0, 0);
+        preprocessCanvasForOCR(ocrCanvas);
+
+        const ocrData = await Tesseract.recognize(ocrCanvas, 'vie+eng', {
+            logger: m => {
+                if (m.status === 'recognizing text') {
+                    showProgress(60 + (m.progress * 35), `Bóc tách chữ: ${Math.round(m.progress * 100)}%`);
+                }
+            }
+        });
+
+        const lines = ocrData.data.lines;
+        lines.forEach(line => {
+            const cleanText = line.text.trim();
+            if (isUsefulText(cleanText)) {
+                results.push({ type: 'text', text: cleanText });
+            }
+        });
+
+        // Finalize
+        lastCapturedDataURL = canvas.toDataURL('image/jpeg', 0.8);
+        showProgress(100, "Hoàn tất!");
+        setTimeout(() => hideProgress(), 500);
+        
+        displayResults(results);
+    } catch (err) {
+        console.error("Scanning Error:", err);
+        hideProgress();
+        alert("Có lỗi xảy ra: " + err.message);
+    }
+}
+
+// --- Utils ---
+
 function preprocessCanvasForOCR(canv) {
     const ctx = canv.getContext('2d');
     const imageData = ctx.getImageData(0, 0, canv.width, canv.height);
     const data = imageData.data;
-    
-    // Contrast factor (1.5 - 2.0 is usually good)
     const contrast = 1.8;
     const factor = (259 * (contrast + 255)) / (255 * (259 - contrast));
 
     for (let i = 0; i < data.length; i += 4) {
-        // 1. Grayscale
         const avg = (data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114);
-        
-        // 2. High Contrast
         let color = factor * (avg - 128) + 128;
-        
-        // 3. Thresholding (Simple)
         color = color > 130 ? 255 : 0;
-
         data[i] = data[i + 1] = data[i + 2] = color;
     }
     ctx.putImageData(imageData, 0, 0);
@@ -247,26 +283,11 @@ function preprocessCanvasForOCR(canv) {
 
 function isUsefulText(text) {
     const lower = text.toLowerCase();
-    
-    // Keywords for Serial Numbers
-    if (lower.includes('serial') || lower.includes('series') || lower.includes('no.') || lower.includes('s/n') || lower.includes('no:')) {
-        return true;
-    }
-    
-    // Pattern for typical serials (e.g. RS... followed by digits)
-    if (/RS[0-9]{5,}/.test(text)) {
-        return true;
-    }
-
-    // Pattern for Order IDs (usually long alphanumeric strings like SPX...)
-    if (/SPX[A-Z0-9]{10,}/i.test(text)) {
-        return true;
-    }
-
+    if (lower.includes('serial') || lower.includes('series') || lower.includes('no.') || lower.includes('s/n') || lower.includes('no:')) return true;
+    if (/RS[0-9]{5,}/.test(text)) return true;
+    if (/SPX[A-Z0-9]{10,}/i.test(text)) return true;
     return false;
 }
-
-// --- UI Helpers ---
 
 function showProgress(percent, text) {
     scanProgress.style.display = 'flex';
@@ -280,14 +301,11 @@ function hideProgress() {
 
 function displayResults(results) {
     resultBody.innerHTML = '';
-    
-    // Update Image Preview
     const capturePreview = document.getElementById('capturePreview');
     if (capturePreview && lastCapturedDataURL) {
         capturePreview.src = lastCapturedDataURL;
     }
 
-    // Remove duplicates
     const unique = [];
     const seen = new Set();
     results.forEach(r => {
@@ -323,17 +341,14 @@ function displayResults(results) {
 }
 
 window.copyToClipboard = (text) => {
-    navigator.clipboard.writeText(text).then(() => {
-        // Simple visual feedback instead of alert if possible, but alert is fine for now
-        alert("Đã copy: " + text);
-    });
+    navigator.clipboard.writeText(text).then(() => alert("Đã copy: " + text));
 };
 
 document.getElementById('closeResultBtn').addEventListener('click', () => {
     resultSection.style.display = 'none';
 });
 
-// --- Theme & Settings (Same as before) ---
+// --- Theme & Settings ---
 settingsBtn.addEventListener('click', () => settingsModal.style.display = 'flex');
 document.getElementById('closeSettingsModal').addEventListener('click', () => settingsModal.style.display = 'none');
 document.querySelectorAll('.theme-opt').forEach(opt => {
