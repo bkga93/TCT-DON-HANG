@@ -142,7 +142,39 @@ header h1 {
     box-shadow: 0 0 10px var(--glow-color);
 }
 
-/* Result Board */
+/* Scan Progress Container */
+.scan-progress-container {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    background: rgba(0, 0, 0, 0.8);
+    backdrop-filter: blur(10px);
+    padding: 15px;
+    border-top: 1px solid var(--primary-color);
+    display: none;
+    flex-direction: column;
+    gap: 8px;
+    z-index: 10;
+}
+
+.scan-progress-bar {
+    width: 0%;
+    height: 4px;
+    background: var(--primary-color);
+    box-shadow: 0 0 10px var(--glow-color);
+    border-radius: 2px;
+    transition: width 0.3s ease;
+}
+
+.scan-progress-text {
+    font-size: 0.75rem;
+    color: var(--text-color);
+    text-align: center;
+    font-weight: 500;
+}
+
+/* Result Board Styles */
 .result-board {
     background: var(--surface-color);
     border-radius: 20px;
@@ -175,11 +207,22 @@ header h1 {
     border-bottom: 1px solid var(--border-color);
 }
 
-.result-table th {
-    font-size: 0.8rem;
+.type-badge {
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.65rem;
+    font-weight: 700;
     text-transform: uppercase;
-    color: var(--primary-color);
-    opacity: 0.8;
+    margin-bottom: 4px;
+    display: inline-block;
+}
+
+.type-qr { background: #9d50bb; color: #fff; }
+.type-barcode { background: #D4AF37; color: #000; }
+.type-text { background: #40798c; color: #fff; }
+
+.result-table td {
+    vertical-align: top;
 }
 
 /* Copyright Label */

@@ -1,11 +1,13 @@
 /**
- * TCT Multi-QR Scanner Pro - Logic
+ * TCT Ultimate Multi-Scanner Pro - Logic v1.2.6.0
  * Thực hiện bởi NVH
  */
 
 const video = document.getElementById('video');
 const canvas = document.getElementById('captureCanvas');
 const captureBtn = document.getElementById('captureBtn');
+const uploadBtn = document.getElementById('uploadBtn');
+const fileInput = document.getElementById('fileInput');
 const switchCamBtn = document.getElementById('switchCamBtn');
 const settingsBtn = document.getElementById('settingsBtn');
 const resultSection = document.getElementById('resultSection');
@@ -14,14 +16,38 @@ const qrCount = document.getElementById('qrCount');
 const scanLine = document.getElementById('scanLine');
 const settingsModal = document.getElementById('settingsModal');
 
-const uploadBtn = document.getElementById('uploadBtn');
-const fileInput = document.getElementById('fileInput');
+// Progress UI
+const scanProgress = document.getElementById('scanProgress');
+const scanProgressBar = scanProgress.querySelector('.scan-progress-bar');
+const scanProgressText = scanProgress.querySelector('.scan-progress-text');
 
 let currentStream = null;
 let useFrontCamera = false;
 
-// Initialize ZXing - Fallback to a simpler approach if constructors are missing
+// Initialize Libraries
 const codeReader = new ZXing.BrowserMultiFormatReader();
+
+// --- Initialization ---
+
+document.addEventListener('DOMContentLoaded', () => {
+    startCamera();
+    
+    uploadBtn.addEventListener('click', () => fileInput.click());
+    
+    fileInput.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        processImageFile(file);
+    });
+
+    captureBtn.addEventListener('click', () => {
+        if (!currentStream) {
+            alert("Camera chưa sẵn sàng. Vui lòng sử dụng 'CHỌN ẢNH'!");
+            return;
+        }
+        captureFromVideo();
+    });
+});
 
 // --- Camera Management ---
 
@@ -33,8 +59,8 @@ async function startCamera() {
     const constraints = {
         video: {
             facingMode: useFrontCamera ? "user" : "environment",
-            width: { ideal: 1280 },
-            height: { ideal: 720 }
+            width: { ideal: 1920 },
+            height: { ideal: 1080 }
         }
     };
 
@@ -43,8 +69,7 @@ async function startCamera() {
         video.srcObject = currentStream;
         scanLine.style.display = 'block';
     } catch (err) {
-        console.warn("Camera error (possibly none available):", err);
-        // Do not alert, just log. The user might want to use file upload instead.
+        console.warn("Camera access failed:", err);
     }
 }
 
@@ -53,157 +78,218 @@ switchCamBtn.addEventListener('click', () => {
     startCamera();
 });
 
-// --- Upload Logic ---
+// --- Workflow ---
 
-uploadBtn.addEventListener('click', () => fileInput.click());
+function captureFromVideo() {
+    // Flash effect
+    video.style.opacity = '0.5';
+    setTimeout(() => video.style.opacity = '1', 100);
 
-fileInput.addEventListener('change', (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(video, 0, 0);
+    
+    runUltimateScan();
+}
 
+function processImageFile(file) {
     const reader = new FileReader();
     reader.onload = (event) => {
         const img = new Image();
         img.onload = () => {
-            canvas.width = img.width;
-            canvas.height = img.height;
+            // Downscale if too large for performance
+            const MAX_WIDTH = 1600;
+            let width = img.width;
+            let height = img.height;
+            
+            if (width > MAX_WIDTH) {
+                height = (MAX_WIDTH / width) * height;
+                width = MAX_WIDTH;
+            }
+            
+            canvas.width = width;
+            canvas.height = height;
             const ctx = canvas.getContext('2d');
-            ctx.drawImage(img, 0, 0);
-            scanMultipleQRs();
+            ctx.drawImage(img, 0, 0, width, height);
+            
+            runUltimateScan();
         };
         img.src = event.target.result;
     };
     reader.readAsDataURL(file);
-});
+}
 
-// --- QR Detection Logic (Iterative Masking to handle multiple QRs) ---
+// --- The Ultimate Scanning Flow ---
 
-async function scanMultipleQRs() {
+async function runUltimateScan() {
     const results = [];
-    const context = canvas.getContext('2d');
+    showProgress(0, "Đang khởi tạo...");
     
-    // Create a copy of the canvas for iterative masking
+    try {
+        // 1. BarcodeDetector (Modern API)
+        showProgress(20, "Đang quét Mã vạch & QR (API Gốc)...");
+        if ('BarcodeDetector' in window) {
+            const formats = ['qr_code', 'code_128', 'code_39', 'ean_13', 'itf', 'upc_a'];
+            const detector = new BarcodeDetector({ formats });
+            const detected = await detector.detect(canvas);
+            detected.forEach(d => results.push({ type: d.format === 'qr_code' ? 'qr' : 'barcode', text: d.rawValue }));
+        }
+
+        // 2. ZXing Fallback (Iterative)
+        if (results.length === 0) {
+            showProgress(40, "Đang quét chuyên sâu (ZXing)...");
+            const zxingResults = await scanZXingIterative(canvas);
+            zxingResults.forEach(r => results.push({ type: 'qr', text: r.text }));
+        }
+
+        // 3. OCR (Tesseract.js)
+        showProgress(60, "Đang nhận diện văn bản (OCR)...");
+        const ocrData = await Tesseract.recognize(canvas, 'eng+vie', {
+            logger: m => {
+                if (m.status === 'recognizing text') {
+                    showProgress(60 + (m.progress * 35), `Đang đọc chữ: ${Math.round(m.progress * 100)}%`);
+                }
+            }
+        });
+
+        // Filter OCR results (looking for serials, codes, etc.)
+        const lines = ocrData.data.lines;
+        lines.forEach(line => {
+            const cleanText = line.text.trim();
+            if (isUsefulText(cleanText)) {
+                results.push({ type: 'text', text: cleanText });
+            }
+        });
+
+        showProgress(100, "Hoàn tất!");
+        setTimeout(() => hideProgress(), 500);
+        
+        displayResults(results);
+    } catch (err) {
+        console.error("Scanning Error:", err);
+        hideProgress();
+        alert("Có lỗi xảy ra: " + err.message);
+    }
+}
+
+async function scanZXingIterative(sourceCanvas) {
+    const tempResults = [];
     const tempCanvas = document.createElement('canvas');
-    tempCanvas.width = canvas.width;
-    tempCanvas.height = canvas.height;
+    tempCanvas.width = sourceCanvas.width;
+    tempCanvas.height = sourceCanvas.height;
     const tempCtx = tempCanvas.getContext('2d');
-    tempCtx.drawImage(canvas, 0, 0);
+    tempCtx.drawImage(sourceCanvas, 0, 0);
 
     let foundAll = false;
     let attempts = 0;
-    const maxAttempts = 10; // Limit to prevent infinite loops
-
-    while (!foundAll && attempts < maxAttempts) {
+    while (!foundAll && attempts < 5) {
         try {
-            // Use decodeFromCanvas which is more stable across ZXing versions
-            const result = await codeReader.decodeFromCanvas(tempCanvas);
+            const res = await codeReader.decodeFromCanvas(tempCanvas);
+            tempResults.push(res);
             
-            // Avoid duplicates
-            if (!results.some(r => r.text === result.text)) {
-                results.push(result);
-            }
-
-            // Mask the found QR to find the next one
-            const points = result.resultPoints;
-            if (points && points.length >= 3) {
+            // Mask the found area
+            const pts = res.resultPoints;
+            if (pts && pts.length >= 3) {
                 tempCtx.fillStyle = 'black';
                 tempCtx.beginPath();
-                tempCtx.moveTo(points[0].x, points[0].y);
-                for (let i = 1; i < points.length; i++) {
-                    tempCtx.lineTo(points[i].x, points[i].y);
-                }
+                tempCtx.moveTo(pts[0].x, pts[0].y);
+                for (let i = 1; i < pts.length; i++) tempCtx.lineTo(pts[i].x, pts[i].y);
                 tempCtx.closePath();
                 tempCtx.fill();
-            } else {
-                // If we can't mask it, we stop to avoid infinite loop on same QR
-                foundAll = true;
-            }
+            } else foundAll = true;
             attempts++;
-        } catch (err) {
-            // No more QR codes detected
+        } catch (e) {
             foundAll = true;
         }
     }
+    return tempResults;
+}
 
-    if (results.length > 0) {
-        displayResults(results);
-    } else {
-        alert("Không tìm thấy mã QR nào. Hãy thử camera khác hoặc ảnh rõ nét hơn!");
-    }
+function isUsefulText(text) {
+    // Filter out short noise or common non-data text
+    if (text.length < 4) return false;
+    // Regex to find things that look like serial numbers or codes (contains numbers and letters)
+    if (/[0-9]/.test(text) && text.length > 5) return true;
+    // Or Uppercase words (potential category/ID)
+    if (/^[A-Z0-9\-\. ]+$/.test(text)) return true;
+    return false;
+}
+
+// --- UI Helpers ---
+
+function showProgress(percent, text) {
+    scanProgress.style.display = 'flex';
+    scanProgressBar.style.width = percent + '%';
+    scanProgressText.innerText = text;
+}
+
+function hideProgress() {
+    scanProgress.style.display = 'none';
 }
 
 function displayResults(results) {
     resultBody.innerHTML = '';
-    qrCount.innerText = results.length;
     
-    if (results.length > 0) {
-        results.forEach(res => {
+    // Remove duplicates
+    const unique = [];
+    const seen = new Set();
+    results.forEach(r => {
+        const key = r.type + ':' + r.text;
+        if (!seen.has(key)) {
+            seen.add(key);
+            unique.push(r);
+        }
+    });
+
+    qrCount.innerText = unique.length;
+    
+    if (unique.length > 0) {
+        unique.forEach(res => {
             const row = document.createElement('tr');
+            const typeLabel = res.type === 'qr' ? 'QR Code' : (res.type === 'barcode' ? 'Mã vạch' : 'Văn bản');
             row.innerHTML = `
-                <td style="word-break: break-all; font-size: 0.9rem;">${res.text}</td>
-                <td>
-                    <button class="btn" style="padding: 5px 10px; font-size: 0.7rem;" onclick="copyToClipboard('${res.text}')">Copy</button>
+                <td style="word-break: break-all;">
+                    <span class="type-badge type-${res.type}">${typeLabel}</span>
+                    <div style="font-size: 0.95rem; color: var(--text-color); font-weight: 500;">${res.text}</div>
+                </td>
+                <td style="width: 80px; text-align: center;">
+                    <button class="btn" style="padding: 10px; font-size: 0.7rem;" onclick="copyToClipboard('${res.text}')">Copy</button>
                 </td>
             `;
             resultBody.appendChild(row);
         });
         resultSection.style.display = 'block';
         resultSection.scrollIntoView({ behavior: 'smooth' });
+    } else {
+        alert("Không tìm thấy thông tin nào! Vui lòng thử lại với ảnh rõ nét hơn.");
     }
 }
 
 window.copyToClipboard = (text) => {
     navigator.clipboard.writeText(text).then(() => {
+        // Simple visual feedback instead of alert if possible, but alert is fine for now
         alert("Đã copy: " + text);
     });
 };
-
-captureBtn.addEventListener('click', () => {
-    // Add a quick flash effect
-    video.style.opacity = '0.5';
-    setTimeout(() => video.style.opacity = '1', 100);
-    
-    // 1. Capture current frame from video to canvas
-    if (currentStream) {
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-        scanMultipleQRs();
-    } else {
-        alert("Camera chưa sẵn sàng. Vui lòng sử dụng tính năng 'CHỌN ẢNH'!");
-    }
-});
 
 document.getElementById('closeResultBtn').addEventListener('click', () => {
     resultSection.style.display = 'none';
 });
 
-// --- Theme Management ---
-
-settingsBtn.addEventListener('click', () => {
-    settingsModal.style.display = 'flex';
-});
-
-document.getElementById('closeSettingsModal').addEventListener('click', () => {
-    settingsModal.style.display = 'none';
-});
-
+// --- Theme & Settings (Same as before) ---
+settingsBtn.addEventListener('click', () => settingsModal.style.display = 'flex');
+document.getElementById('closeSettingsModal').addEventListener('click', () => settingsModal.style.display = 'none');
 document.querySelectorAll('.theme-opt').forEach(opt => {
     opt.addEventListener('click', () => {
         const theme = opt.getAttribute('data-theme');
         document.body.className = theme;
-        
-        // Update active state
         document.querySelectorAll('.theme-opt').forEach(o => o.classList.remove('active'));
         opt.classList.add('active');
-        
-        // Optional: Save to localStorage
         localStorage.setItem('tct-theme', theme);
     });
 });
 
-// Load saved theme
 const savedTheme = localStorage.getItem('tct-theme');
 if (savedTheme) {
     document.body.className = savedTheme;
@@ -213,14 +299,3 @@ if (savedTheme) {
         activeOpt.classList.add('active');
     }
 }
-
-// Start app after DOM is ready
-document.addEventListener('DOMContentLoaded', () => {
-    startCamera();
-    
-    // Debug log for upload issue
-    uploadBtn.addEventListener('click', () => {
-        console.log("Upload button clicked, triggering file input...");
-        fileInput.click();
-    });
-});
