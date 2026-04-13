@@ -214,5 +214,13 @@ if (savedTheme) {
     }
 }
 
-// Start app
-startCamera();
+// Start app after DOM is ready
+document.addEventListener('DOMContentLoaded', () => {
+    startCamera();
+    
+    // Debug log for upload issue
+    uploadBtn.addEventListener('click', () => {
+        console.log("Upload button clicked, triggering file input...");
+        fileInput.click();
+    });
+});

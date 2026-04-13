@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>TCT Multi-QR Scanner Pro</title>
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="style.css?v=1.2.5.2">
     <!-- Google Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Outfit:wght@500;700&display=swap" rel="stylesheet">
     <!-- ZXing Library for multi-barcode detection -->
@@ -14,6 +14,7 @@
     <div class="app-container">
         <header>
             <h1>TCT SCANNER PRO</h1>
+            <div id="versionTag" style="font-size: 0.7rem; opacity: 0.5; margin-top: -5px;">Phiên bản v1.2.5.2</div>
         </header>
 
         <main>
@@ -71,25 +72,25 @@
             <button class="close-btn" id="closeSettingsModal">&times;</button>
             <h2 style="margin-bottom: 20px; font-family: 'Outfit';">Chọn Theme</h2>
             
-            <p style="font-size: 0.9rem; opacity: 0.7; margin-bottom: 10px;">Themes Tối</p>
+            <p style="font-size: 0.8rem; opacity: 0.7; margin-bottom: 10px;">Themes Tối</p>
             <div class="theme-grid" id="darkThemes">
-                <div class="theme-opt active" style="background: #2D122A;" data-theme="theme-dark-1"></div>
-                <div class="theme-opt" style="background: #0d1117;" data-theme="theme-dark-2"></div>
-                <div class="theme-opt" style="background: #121212;" data-theme="theme-dark-3"></div>
-                <div class="theme-opt" style="background: #1a1a2e;" data-theme="theme-dark-4"></div>
-                <div class="theme-opt" style="background: #0b2027;" data-theme="theme-dark-5"></div>
+                <div class="theme-opt active" style="background: #2D122A;" data-theme="theme-dark-1"><span>Plum</span></div>
+                <div class="theme-opt" style="background: #0d1117;" data-theme="theme-dark-2"><span>Night</span></div>
+                <div class="theme-opt" style="background: #121212;" data-theme="theme-dark-3"><span>Amoled</span></div>
+                <div class="theme-opt" style="background: #1a1a2e;" data-theme="theme-dark-4"><span>Navy</span></div>
+                <div class="theme-opt" style="background: #0b2027;" data-theme="theme-dark-5"><span>Forest</span></div>
             </div>
 
-            <p style="font-size: 0.9rem; opacity: 0.7; margin: 20px 0 10px;">Themes Sáng</p>
+            <p style="font-size: 0.8rem; opacity: 0.7; margin: 20px 0 10px;">Themes Sáng</p>
             <div class="theme-grid" id="lightThemes">
-                <div class="theme-opt" style="background: #f0f2f5;" data-theme="theme-light-1"></div>
-                <div class="theme-opt" style="background: #fffaf0;" data-theme="theme-light-2"></div>
-                <div class="theme-opt" style="background: #f8fafc;" data-theme="theme-light-3"></div>
-                <div class="theme-opt" style="background: #faf5ff;" data-theme="theme-light-4"></div>
+                <div class="theme-opt" style="background: #f0f2f5;" data-theme="theme-light-1"><span>Day</span></div>
+                <div class="theme-opt" style="background: #fffaf0;" data-theme="theme-light-2"><span>Cream</span></div>
+                <div class="theme-opt" style="background: #f8fafc;" data-theme="theme-light-3"><span>Snow</span></div>
+                <div class="theme-opt" style="background: #faf5ff;" data-theme="theme-light-4"><span>Silk</span></div>
             </div>
         </div>
     </div>
 
-    <script src="app.js"></script>
+    <script src="app.js?v=1.2.5.2"></script>
 </body>
 </html>
