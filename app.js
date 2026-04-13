@@ -305,10 +305,21 @@ async function scanZXingIterative(sourceCanvas) {
 }
 
 function isUsefulText(text) {
-    const lower = text.toLowerCase();
-    if (lower.includes('serial') || lower.includes('series') || lower.includes('no.') || lower.includes('s/n') || lower.includes('no:')) return true;
-    if (/RS[0-9]{5,}/.test(text)) return true;
-    if (/SPX[A-Z0-9]{10,}/i.test(text)) return true;
+    const lower = text.toLowerCase().trim();
+    if (lower.length < 4) return false;
+
+    // Common label keywords
+    const keywords = ['serial', 'series', 'no.', 's/n', 'no:', 'part no', 'hcb', 'mã đơn', 'mã vận đơn', 'vận đơn'];
+    if (keywords.some(k => lower.includes(k))) return true;
+    
+    // Specific Shopee/Model patterns
+    if (/RS[0-9]{5,}/i.test(text)) return true;
+    if (/SPX[A-Z0-9]{8,}/i.test(text)) return true;
+    if (/HCB[A-Z0-9\-]{5,}/i.test(text)) return true;
+
+    // Catch-all for what looks like a code (Mix of letters and numbers, >= 8 chars)
+    if (text.length >= 8 && /[0-9]/.test(text) && /[A-Z]/i.test(text)) return true;
+
     return false;
 }
 
