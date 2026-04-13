@@ -15,7 +15,7 @@
     <div class="app-container">
         <header>
             <h1>TCT SCANNER PRO</h1>
-            <div id="versionTag" style="font-size: 0.7rem; opacity: 0.5; margin-top: -5px;">Phiên bản v1.2.6.2 (Enhanced OCR)</div>
+            <div id="versionTag" style="font-size: 0.7rem; opacity: 0.5; margin-top: -5px;">Phiên bản v1.2.7.0 (Capture & Cloud Ready)</div>
         </header>
 
         <main>
@@ -51,6 +51,12 @@
                 <div class="result-header">
                     <h3>Kết quả quét được (<span id="qrCount">0</span>)</h3>
                     <button id="closeResultBtn" class="btn" style="padding: 8px 12px; font-size: 0.8rem;">Đóng</button>
+                </div>
+                
+                <!-- Preview captured image -->
+                <div id="capturePreviewContainer" style="margin-bottom: 20px; text-align: center;">
+                    <p style="font-size: 0.75rem; color: var(--primary-color); margin-bottom: 8px; text-transform: uppercase; font-weight: 700;">Ảnh đã chụp (Sẵn sàng lưu Cloud)</p>
+                    <img id="capturePreview" style="width: 100%; border-radius: 12px; border: 1px solid var(--border-color); box-shadow: 0 4px 15px rgba(0,0,0,0.3);">
                 </div>
                 <div style="max-height: 300px; overflow-y: auto;">
                     <table class="result-table">
@@ -96,6 +102,6 @@
         </div>
     </div>
 
-    <script src="app.js?v=1.2.6.2"></script>
+    <script src="app.js?v=1.2.7.0"></script>
 </body>
 </html>

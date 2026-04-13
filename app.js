@@ -23,6 +23,7 @@ const scanProgressText = scanProgress.querySelector('.scan-progress-text');
 
 let currentStream = null;
 let useFrontCamera = false;
+let lastCapturedDataURL = null;
 
 // Initialize Libraries
 const codeReader = new ZXing.BrowserMultiFormatReader();
@@ -171,6 +172,9 @@ async function runUltimateScan() {
             }
         });
 
+        // Save for Cloud
+        lastCapturedDataURL = canvas.toDataURL('image/jpeg', 0.8);
+
         showProgress(100, "Hoàn tất!");
         setTimeout(() => hideProgress(), 500);
         
@@ -263,6 +267,12 @@ function hideProgress() {
 function displayResults(results) {
     resultBody.innerHTML = '';
     
+    // Update Image Preview
+    const capturePreview = document.getElementById('capturePreview');
+    if (capturePreview && lastCapturedDataURL) {
+        capturePreview.src = lastCapturedDataURL;
+    }
+
     // Remove duplicates
     const unique = [];
     const seen = new Set();
