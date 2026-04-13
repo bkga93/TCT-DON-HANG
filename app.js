@@ -1,6 +1,6 @@
 /**
- * TCT Ultimate Multi-Scanner Pro - Logic v1.2.9.0
- * Kỹ thuật Super Tiling Scan (Phân vùng quét sâu)
+ * TCT Ultimate Multi-Scanner Pro - Logic v1.3.0
+ * Kỹ thuật Hyper Deep Scan (jsQR + Multi-Threshold + Native Tiling)
  * Thực hiện bởi NVH
  */
 
@@ -26,7 +26,7 @@ let currentStream = null;
 let useFrontCamera = false;
 let lastCapturedDataURL = null;
 
-// Initialize Libraries
+// Initialize ZXing
 const codeReader = new ZXing.BrowserMultiFormatReader();
 
 // --- Initialization ---
@@ -61,8 +61,8 @@ async function startCamera() {
     const constraints = {
         video: {
             facingMode: useFrontCamera ? "user" : "environment",
-            width: { ideal: 1920 },
-            height: { ideal: 1080 }
+            width: { ideal: 4096 }, // Target 4K if available for maximum detail
+            height: { ideal: 2160 }
         }
     };
 
@@ -91,7 +91,7 @@ function captureFromVideo() {
     const ctx = canvas.getContext('2d');
     ctx.drawImage(video, 0, 0);
     
-    runUltimateScan();
+    runUltimateScan(canvas);
 }
 
 function processImageFile(file) {
@@ -99,33 +99,34 @@ function processImageFile(file) {
     reader.onload = (event) => {
         const img = new Image();
         img.onload = () => {
-            const MAX_WIDTH = 1600;
-            let width = img.width;
-            let height = img.height;
-            
-            if (width > MAX_WIDTH) {
-                height = (MAX_WIDTH / width) * height;
-                width = MAX_WIDTH;
-            }
-            
-            canvas.width = width;
-            canvas.height = height;
+            // No downscaling for the master canvas to preserve native resolution for tiles
+            canvas.width = img.width;
+            canvas.height = img.height;
             const ctx = canvas.getContext('2d');
-            ctx.drawImage(img, 0, 0, width, height);
-            
-            runUltimateScan();
+            ctx.drawImage(img, 0, 0);
+            runUltimateScan(canvas);
         };
         img.src = event.target.result;
     };
     reader.readAsDataURL(file);
 }
 
-// --- Core Scanning Function ---
+// --- Hyper Scanning Core ---
 
-async function scanTarget(targetCanvas) {
+async function scanCanvasHyper(targetCanvas) {
     const findings = [];
     
-    // 1. Native API
+    // 1. jsQR (Specialized for QR - very robust)
+    try {
+        const ctx = targetCanvas.getContext('2d');
+        const imgData = ctx.getImageData(0, 0, targetCanvas.width, targetCanvas.height);
+        const code = jsQR(imgData.data, imgData.width, imgData.height, { inversionAttempts: "dontInvert" });
+        if (code) {
+            findings.push({ type: 'qr', text: code.data });
+        }
+    } catch (e) {}
+
+    // 2. BarcodeDetector (Native)
     if ('BarcodeDetector' in window) {
         try {
             const formats = ['qr_code', 'code_128', 'code_39', 'ean_13', 'itf', 'upc_a'];
@@ -135,7 +136,7 @@ async function scanTarget(targetCanvas) {
         } catch (e) {}
     }
     
-    // 2. ZXing Iterative Scan
+    // 3. ZXing (Iterative Fallback)
     try {
         const zxingResults = await scanZXingIterative(targetCanvas);
         zxingResults.forEach(r => {
@@ -148,56 +149,36 @@ async function scanTarget(targetCanvas) {
     return findings;
 }
 
-async function scanZXingIterative(sourceCanvas) {
-    const tempResults = [];
-    const tempCanvas = document.createElement('canvas');
-    tempCanvas.width = sourceCanvas.width;
-    tempCanvas.height = sourceCanvas.height;
-    const tempCtx = tempCanvas.getContext('2d');
-    tempCtx.drawImage(sourceCanvas, 0, 0);
+// --- The Nuclear Scanning Flow ---
 
-    let foundAll = false;
-    let attempts = 0;
-    while (!foundAll && attempts < 5) {
-        try {
-            const res = await codeReader.decodeFromCanvas(tempCanvas);
-            tempResults.push(res);
-            
-            const pts = res.resultPoints;
-            if (pts && pts.length >= 3) {
-                tempCtx.fillStyle = 'black';
-                tempCtx.beginPath();
-                tempCtx.moveTo(pts[0].x, pts[0].y);
-                for (let i = 1; i < pts.length; i++) tempCtx.lineTo(pts[i].x, pts[i].y);
-                tempCtx.closePath();
-                tempCtx.fill();
-            } else foundAll = true;
-            attempts++;
-        } catch (e) {
-            foundAll = true;
-        }
-    }
-    return tempResults;
-}
-
-// --- The Super Tiling Scanning Flow ---
-
-async function runUltimateScan() {
+async function runUltimateScan(sourceCanvas) {
     const results = [];
-    showProgress(0, "Đang chuẩn bị...");
+    showProgress(0, "Khởi tạo Hệ thống Siêu Quét...");
     
     try {
-        // Step 1: Global Scan (Full Image)
-        showProgress(10, "Quét toàn cục...");
-        const globalFindings = await scanTarget(canvas);
-        results.push(...globalFindings);
+        // Step 1: Global Scan with Multi-Thresholds
+        const filters = ['original', 'contrast', 'binary'];
+        for (let i = 0; i < filters.length; i++) {
+            showProgress(5 + (i * 5), `Quét toàn cục (Chế độ: ${filters[i]})...`);
+            const procCanvas = document.createElement('canvas');
+            procCanvas.width = Math.min(sourceCanvas.width, 2000); // Global scan doesn't need 4000px
+            procCanvas.height = (procCanvas.width / sourceCanvas.width) * sourceCanvas.height;
+            const pCtx = procCanvas.getContext('2d');
+            pCtx.drawImage(sourceCanvas, 0, 0, procCanvas.width, procCanvas.height);
+            
+            if (filters[i] !== 'original') applyFilters(procCanvas, filters[i]);
+            
+            const findings = await scanCanvasHyper(procCanvas);
+            findings.forEach(f => {
+                if (!results.some(r => r.text === f.text)) results.push(f);
+            });
+        }
 
-        // Step 2: Super Tiling Scan (3x3 Grid)
-        showProgress(25, "Bắt đầu quét sâu từng vùng...");
-        const cols = 3;
-        const rows = 3;
-        const tileW = Math.floor(canvas.width / 2); // 50% width to ensure overlap
-        const tileH = Math.floor(canvas.height / 2);
+        // Step 2: Native Tiling Scan (4x4 Grid on ORIGINAL resolution)
+        const cols = 4;
+        const rows = 4;
+        const tileW = Math.floor(sourceCanvas.width / 2.5); // Large overlap
+        const tileH = Math.floor(sourceCanvas.height / 2.5);
         
         const tileCanvas = document.createElement('canvas');
         tileCanvas.width = tileW;
@@ -207,37 +188,42 @@ async function runUltimateScan() {
         for (let y = 0; y < rows; y++) {
             for (let x = 0; x < cols; x++) {
                 const step = (y * cols + x);
-                const progress = 25 + Math.floor((step / (rows * cols)) * 30);
-                showProgress(progress, `Đang quét vùng ${step + 1}/9...`);
+                const progress = 25 + Math.floor((step / (rows * cols)) * 40);
+                showProgress(progress, `Quét sâu vùng ${step + 1}/16 (Độ phân giải gốc)...`);
 
-                const startX = Math.floor(x * (canvas.width - tileW) / (cols - 1));
-                const startY = Math.floor(y * (canvas.height - tileH) / (rows - 1));
+                const startX = Math.floor(x * (sourceCanvas.width - tileW) / (cols - 1));
+                const startY = Math.floor(y * (sourceCanvas.height - tileH) / (rows - 1));
 
                 tileCtx.clearRect(0, 0, tileW, tileH);
-                tileCtx.drawImage(canvas, startX, startY, tileW, tileH, 0, 0, tileW, tileH);
+                tileCtx.drawImage(sourceCanvas, startX, startY, tileW, tileH, 0, 0, tileW, tileH);
                 
-                const tileFindings = await scanTarget(tileCanvas);
-                tileFindings.forEach(f => {
-                    if (!results.some(r => r.text === f.text)) {
-                        results.push(f);
-                    }
+                // Scan tile with 2 filters (Original and Contrast)
+                const findingsNormal = await scanCanvasHyper(tileCanvas);
+                findingsNormal.forEach(f => {
+                    if (!results.some(r => r.text === f.text)) results.push(f);
+                });
+
+                applyFilters(tileCanvas, 'contrast');
+                const findingsContrast = await scanCanvasHyper(tileCanvas);
+                findingsContrast.forEach(f => {
+                    if (!results.some(r => r.text === f.text)) results.push(f);
                 });
             }
         }
 
-        // Step 3: OCR (Tesseract.js) for Text/Serial Numbers
-        showProgress(60, "Tối ưu ảnh & Đọc văn bản...");
+        // Step 3: OCR for Serial Numbers
+        showProgress(70, "Đang bóc tách số Series (OCR)...");
         const ocrCanvas = document.createElement('canvas');
-        ocrCanvas.width = canvas.width;
-        ocrCanvas.height = canvas.height;
+        ocrCanvas.width = Math.min(sourceCanvas.width, 2500); 
+        ocrCanvas.height = (ocrCanvas.width / sourceCanvas.width) * sourceCanvas.height;
         const ocrCtx = ocrCanvas.getContext('2d');
-        ocrCtx.drawImage(canvas, 0, 0);
-        preprocessCanvasForOCR(ocrCanvas);
+        ocrCtx.drawImage(sourceCanvas, 0, 0, ocrCanvas.width, ocrCanvas.height);
+        applyFilters(ocrCanvas, 'contrast');
 
         const ocrData = await Tesseract.recognize(ocrCanvas, 'vie+eng', {
             logger: m => {
                 if (m.status === 'recognizing text') {
-                    showProgress(60 + (m.progress * 35), `Bóc tách chữ: ${Math.round(m.progress * 100)}%`);
+                    showProgress(70 + (m.progress * 25), `Đang tìm số Series: ${Math.round(m.progress * 100)}%`);
                 }
             }
         });
@@ -251,7 +237,7 @@ async function runUltimateScan() {
         });
 
         // Finalize
-        lastCapturedDataURL = canvas.toDataURL('image/jpeg', 0.8);
+        lastCapturedDataURL = sourceCanvas.toDataURL('image/jpeg', 0.8);
         showProgress(100, "Hoàn tất!");
         setTimeout(() => hideProgress(), 500);
         
@@ -263,22 +249,59 @@ async function runUltimateScan() {
     }
 }
 
-// --- Utils ---
+// --- Image Processing Filters ---
 
-function preprocessCanvasForOCR(canv) {
+function applyFilters(canv, type) {
     const ctx = canv.getContext('2d');
     const imageData = ctx.getImageData(0, 0, canv.width, canv.height);
     const data = imageData.data;
-    const contrast = 1.8;
-    const factor = (259 * (contrast + 255)) / (255 * (259 - contrast));
-
-    for (let i = 0; i < data.length; i += 4) {
-        const avg = (data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114);
-        let color = factor * (avg - 128) + 128;
-        color = color > 130 ? 255 : 0;
-        data[i] = data[i + 1] = data[i + 2] = color;
+    
+    if (type === 'contrast') {
+        const contrast = 2.0;
+        const factor = (259 * (contrast + 255)) / (255 * (259 - contrast));
+        for (let i = 0; i < data.length; i += 4) {
+            data[i] = factor * (data[i] - 128) + 128;
+            data[i + 1] = factor * (data[i + 1] - 128) + 128;
+            data[i + 2] = factor * (data[i + 2] - 128) + 128;
+        }
+    } else if (type === 'binary') {
+        for (let i = 0; i < data.length; i += 4) {
+            const avg = (data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114);
+            const val = avg > 128 ? 255 : 0;
+            data[i] = data[i + 1] = data[i + 2] = val;
+        }
     }
     ctx.putImageData(imageData, 0, 0);
+}
+
+// --- Utils ---
+
+async function scanZXingIterative(sourceCanvas) {
+    const tempResults = [];
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = sourceCanvas.width;
+    tempCanvas.height = sourceCanvas.height;
+    const tempCtx = tempCanvas.getContext('2d');
+    tempCtx.drawImage(sourceCanvas, 0, 0);
+
+    let attempts = 0;
+    while (attempts < 3) {
+        try {
+            const res = await codeReader.decodeFromCanvas(tempCanvas);
+            tempResults.push(res);
+            const pts = res.resultPoints;
+            if (pts && pts.length >= 3) {
+                tempCtx.fillStyle = 'black';
+                tempCtx.beginPath();
+                tempCtx.moveTo(pts[0].x, pts[0].y);
+                for (let i = 1; i < pts.length; i++) tempCtx.lineTo(pts[i].x, pts[i].y);
+                tempCtx.closePath();
+                tempCtx.fill();
+            } else break;
+            attempts++;
+        } catch (e) { break; }
+    }
+    return tempResults;
 }
 
 function isUsefulText(text) {
@@ -348,7 +371,7 @@ document.getElementById('closeResultBtn').addEventListener('click', () => {
     resultSection.style.display = 'none';
 });
 
-// --- Theme & Settings ---
+// --- Settings ---
 settingsBtn.addEventListener('click', () => settingsModal.style.display = 'flex');
 document.getElementById('closeSettingsModal').addEventListener('click', () => settingsModal.style.display = 'none');
 document.querySelectorAll('.theme-opt').forEach(opt => {
@@ -360,13 +383,3 @@ document.querySelectorAll('.theme-opt').forEach(opt => {
         localStorage.setItem('tct-theme', theme);
     });
 });
-
-const savedTheme = localStorage.getItem('tct-theme');
-if (savedTheme) {
-    document.body.className = savedTheme;
-    const activeOpt = document.querySelector(`.theme-opt[data-theme="${savedTheme}"]`);
-    if (activeOpt) {
-        document.querySelectorAll('.theme-opt').forEach(o => o.classList.remove('active'));
-        activeOpt.classList.add('active');
-    }
-}
