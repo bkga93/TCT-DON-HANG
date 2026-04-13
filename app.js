@@ -1,236 +1,161 @@
-// Initialize Lucide icons
-lucide.createIcons();
+/**
+ * TCT Multi-QR Scanner Pro - Logic
+ * Thực hiện bởi NVH
+ */
 
-let html5QrCode;
-let tesseractWorker = null;
+const video = document.getElementById('video');
+const canvas = document.getElementById('captureCanvas');
+const captureBtn = document.getElementById('captureBtn');
+const switchCamBtn = document.getElementById('switchCamBtn');
+const settingsBtn = document.getElementById('settingsBtn');
+const resultSection = document.getElementById('resultSection');
+const resultBody = document.getElementById('resultBody');
+const qrCount = document.getElementById('qrCount');
+const scanLine = document.getElementById('scanLine');
+const settingsModal = document.getElementById('settingsModal');
 
-const dashboard = document.getElementById('dashboard');
-const cameraInterface = document.getElementById('camera-interface');
-const resultDrawer = document.getElementById('result-drawer');
-const drawerContent = document.getElementById('drawer-content');
-const analysisHud = document.getElementById('analysis-hud');
-const hudMessage = document.getElementById('hud-message');
-const hudProgressBar = document.getElementById('hud-progress-bar');
-const flashEffect = document.getElementById('flash-effect');
-const resultsList = document.getElementById('results-list');
+let currentStream = null;
+let useFrontCamera = false;
 
-const openCameraBtn = document.getElementById('open-camera-btn');
-const closeCameraBtn = document.getElementById('close-camera-btn');
-const shutterBtn = document.getElementById('shutter-btn');
-const closeDrawerBtn = document.getElementById('close-drawer-btn');
-const clearBtn = document.getElementById('clear-btn');
-const copyBtn = document.getElementById('copy-btn');
+// Initialize ZXing
+const codeReader = new ZXing.BrowserMultiFormatReader();
+const hints = new Map();
+hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, [ZXing.BarcodeFormat.QR_CODE]);
 
-// --- Utils ---
-function showToast(message) {
-    const container = document.getElementById('toast-container');
-    const toast = document.createElement('div');
-    toast.className = 'toast';
-    toast.textContent = message;
-    container.appendChild(toast);
-    setTimeout(() => {
-        toast.style.opacity = '0';
-        setTimeout(() => toast.remove(), 300);
-    }, 2500);
-}
+// --- Camera Management ---
 
-function updateHUD(message, progress = null) {
-    hudMessage.textContent = message;
-    if (progress !== null) {
-        hudProgressBar.style.width = `${progress * 100}%`;
+async function startCamera() {
+    if (currentStream) {
+        currentStream.getTracks().forEach(track => track.stop());
     }
-}
 
-// --- OCR Engine Management ---
-async function initOCR(silent = false) {
-    if (tesseractWorker) return tesseractWorker;
-    
-    if (!silent) {
-        analysisHud.classList.remove('hidden');
-        updateHUD('Đang nạp bộ máy OCR...', 0.1);
-    }
-    
-    try {
-        const worker = await Tesseract.createWorker({
-            corePath: 'https://unpkg.com/tesseract.js-core@v5.0.0/tesseract-core.wasm.js',
-            logger: m => {
-                if (!silent) {
-                    if (m.status === 'loading tesseract core') updateHUD('Đang nạp lõi xử lý...', 0.3);
-                    if (m.status === 'loading language traineddata') updateHUD('Đang nạp ngôn ngữ...', 0.6);
-                    if (m.status === 'initializing api') updateHUD('Đang khởi tạo ứng dụng...', 0.9);
-                }
-            }
-        });
-        
-        await worker.loadLanguage('vie+eng');
-        await worker.initialize('vie+eng');
-        tesseractWorker = worker;
-        if (!silent) {
-            updateHUD('Đã sẵn sàng!', 1);
-            setTimeout(() => analysisHud.classList.add('hidden'), 500);
+    const constraints = {
+        video: {
+            facingMode: useFrontCamera ? "user" : "environment",
+            width: { ideal: 1280 },
+            height: { ideal: 720 }
         }
-        return worker;
-    } catch (err) {
-        console.error(err);
-        if (!silent) showToast('Lỗi nạp OCR.');
-        analysisHud.classList.add('hidden');
-        return null;
-    }
-}
-
-// --- Camera Logic ---
-async function openCamera() {
-    dashboard.classList.add('hidden');
-    cameraInterface.classList.remove('hidden');
-    
-    html5QrCode = new Html5Qrcode("reader");
-    
-    // Bắt đầu nạp OCR ngầm (không hiện thông báo cho đến khi chụp)
-    initOCR(true);
+    };
 
     try {
-        const config = { 
-            fps: 10, 
-            qrbox: (viewfinderWidth, viewfinderHeight) => {
-                return { width: viewfinderWidth * 0.8, height: viewfinderWidth * 0.8 };
-            },
-            aspectRatio: window.innerHeight / window.innerWidth // Giả lập full-screen
-        };
-        
-        await html5QrCode.start(
-            { facingMode: "environment" }, 
-            config,
-            () => {} // Không chạy auto-loop scan để tập trung vào phím chụp
-        );
-        showToast('Đã mở Camera');
+        currentStream = await navigator.mediaDevices.getUserMedia(constraints);
+        video.srcObject = currentStream;
+        scanLine.style.display = 'block';
     } catch (err) {
-        showToast('Lỗi Camera: ' + err);
-        closeCamera();
+        console.error("Error accessing camera:", err);
+        alert("Không thể truy cập camera. Vui lòng cấp quyền.");
     }
 }
 
-async function closeCamera() {
-    if (html5QrCode && html5QrCode.isScanning) {
-        await html5QrCode.stop();
-    }
-    cameraInterface.classList.add('hidden');
-    dashboard.classList.remove('hidden');
-    resultDrawer.classList.remove('active');
-}
+switchCamBtn.addEventListener('click', () => {
+    useFrontCamera = !useFrontCamera;
+    startCamera();
+});
 
-// --- Analysis Logic ---
-async function captureAndAnalyze() {
-    const video = document.querySelector('#reader video');
-    if (!video) return;
+// --- QR Detection Logic ---
 
-    // 1. Hiệu ứng Flash trắng (như iPhone)
-    flashEffect.classList.add('flash-active');
-    setTimeout(() => flashEffect.classList.remove('flash-active'), 300);
-
-    // 2. Chụp ảnh từ khung hình video
-    const canvas = document.createElement('canvas');
+async function scanMultipleQRs() {
+    // 1. Capture current frame to canvas
+    const context = canvas.getContext('2d');
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
-    const ctx = canvas.getContext('2d');
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    const imageDataUrl = canvas.toDataURL('image/jpeg', 0.8);
+    context.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-    // 3. Hiển thị HUD phân tích
-    analysisHud.classList.remove('hidden');
-    updateHUD('Đang xử lý ảnh...', 0.1);
-
-    let finalResults = [];
-
+    // 2. Prepare ZXing multiple reader
     try {
-        const imageBlob = await (await fetch(imageDataUrl)).blob();
+        const luminanceSource = new ZXing.HTMLCanvasElementLuminanceSource(canvas);
+        const binarizer = new ZXing.HybridBinarizer(luminanceSource);
+        const binaryBitmap = new ZXing.BinaryBitmap(binarizer);
+
+        const multiFormatReader = new ZXing.MultiFormatReader();
+        multiFormatReader.setHints(hints);
+        const multiReader = new ZXing.GenericMultipleBarcodeReader(multiFormatReader);
+
+        const results = multiReader.decodeMultiple(binaryBitmap, hints);
         
-        // A. QUÉT MÃ QR/BARCODE TRÊN ẢNH VỪA CHỤP
-        const qrTemp = new Html5Qrcode("reader"); 
-        try {
-            updateHUD('Đang tìm mã vạch...', 0.3);
-            const qrResult = await qrTemp.scanFile(imageBlob, true);
-            if (qrResult) finalResults.push({ type: 'MÃ ĐƠN HÀNG', content: qrResult });
-        } catch(e) { }
-
-        // B. QUÉT VĂN BẢN (OCR)
-        const worker = await initOCR(false); // Nếu chưa xong thì hiện thông báo lúc này
-        if (worker) {
-            updateHUD('Đang trích xuất chữ...', 0.6);
-            const { data: { text } } = await worker.recognize(imageDataUrl);
-            if (text.trim()) finalResults.push({ type: 'THÔNG TIN BỔ SUNG (OCR)', content: text });
-        }
-
-        displayResultsInDrawer(finalResults);
+        displayResults(results);
     } catch (err) {
-        showToast('Lỗi khi phân tích ảnh.');
-        console.error(err);
-    } finally {
-        analysisHud.classList.add('hidden');
+        if (err instanceof ZXing.NotFoundException) {
+            alert("Không tìm thấy mã QR nào trong ảnh. Hãy thử lại!");
+        } else {
+            console.error("Scan error:", err);
+            alert("Có lỗi xảy ra khi quét: " + err.message);
+        }
     }
 }
 
-function displayResultsInDrawer(results) {
-    drawerContent.innerHTML = '';
+function displayResults(results) {
+    resultBody.innerHTML = '';
+    qrCount.innerText = results.length;
     
-    if (results.length === 0) {
-        drawerContent.innerHTML = `
-            <div style="text-align:center; padding:40px; color:var(--text-muted);">
-                <i data-lucide="frown" style="width:48px; height:48px; margin-bottom:10px;"></i>
-                <p>Không tìm thấy thông tin gì trên nhãn này.</p>
-            </div>
-        `;
-    } else {
+    if (results.length > 0) {
         results.forEach(res => {
-            const card = document.createElement('div');
-            card.className = 'result-card';
-            card.style.background = 'rgba(255,255,255,0.05)';
-            card.innerHTML = `
-                <div class="type">${res.type}</div>
-                <div class="content" style="white-space: pre-wrap;">${res.content}</div>
-                <button class="copy-small-btn" onclick="navigator.clipboard.writeText('${res.content.replace(/'/g, "\\'")}'); showToast('Đã copy!')">
-                    <i data-lucide="copy" style="width:14px;"></i> Copy
-                </button>
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td style="word-break: break-all; font-size: 0.9rem;">${res.text}</td>
+                <td>
+                    <button class="btn" style="padding: 5px 10px; font-size: 0.7rem;" onclick="copyToClipboard('${res.text}')">Copy</button>
+                </td>
             `;
-            drawerContent.appendChild(card);
-            saveToHistory(res);
+            resultBody.appendChild(row);
         });
+        resultSection.style.display = 'block';
+        resultSection.scrollIntoView({ behavior: 'smooth' });
     }
+}
+
+window.copyToClipboard = (text) => {
+    navigator.clipboard.writeText(text).then(() => {
+        alert("Đã copy: " + text);
+    });
+};
+
+captureBtn.addEventListener('click', () => {
+    // Add a quick flash effect
+    video.style.opacity = '0.5';
+    setTimeout(() => video.style.opacity = '1', 100);
     
-    lucide.createIcons();
-    resultDrawer.classList.add('active');
-}
-
-function saveToHistory(res) {
-    const emptyState = resultsList.querySelector('.empty-state');
-    if (emptyState) emptyState.remove();
-
-    const time = new Date().toLocaleTimeString();
-    const card = document.createElement('div');
-    card.className = 'result-card';
-    card.innerHTML = `
-        <div class="type">${res.type}</div>
-        <div class="content">${res.content.substring(0, 100)}${res.content.length > 100 ? '...' : ''}</div>
-        <span class="time">${time}</span>
-    `;
-    resultsList.prepend(card);
-}
-
-// --- Event Listeners ---
-openCameraBtn.addEventListener('click', openCamera);
-closeCameraBtn.addEventListener('click', closeCamera);
-shutterBtn.addEventListener('click', captureAndAnalyze);
-closeDrawerBtn.addEventListener('click', () => resultDrawer.classList.remove('active'));
-
-clearBtn.addEventListener('click', () => {
-    resultsList.innerHTML = '<div class="empty-state"><i data-lucide="scan"></i><p>Nhấn "Mở Camera" để bắt đầu</p></div>';
-    lucide.createIcons();
-    showToast('Đã xóa lịch sử');
+    scanMultipleQRs();
 });
 
-copyBtn.addEventListener('click', () => {
-    const text = Array.from(drawerContent.querySelectorAll('.content'))
-        .map(el => el.innerText)
-        .join('\n\n---\n\n');
-    navigator.clipboard.writeText(text);
-    showToast('Đã copy tất cả!');
+document.getElementById('closeResultBtn').addEventListener('click', () => {
+    resultSection.style.display = 'none';
 });
+
+// --- Theme Management ---
+
+settingsBtn.addEventListener('click', () => {
+    settingsModal.style.display = 'flex';
+});
+
+document.getElementById('closeSettingsModal').addEventListener('click', () => {
+    settingsModal.style.display = 'none';
+});
+
+document.querySelectorAll('.theme-opt').forEach(opt => {
+    opt.addEventListener('click', () => {
+        const theme = opt.getAttribute('data-theme');
+        document.body.className = theme;
+        
+        // Update active state
+        document.querySelectorAll('.theme-opt').forEach(o => o.classList.remove('active'));
+        opt.classList.add('active');
+        
+        // Optional: Save to localStorage
+        localStorage.setItem('tct-theme', theme);
+    });
+});
+
+// Load saved theme
+const savedTheme = localStorage.getItem('tct-theme');
+if (savedTheme) {
+    document.body.className = savedTheme;
+    const activeOpt = document.querySelector(`.theme-opt[data-theme="${savedTheme}"]`);
+    if (activeOpt) {
+        document.querySelectorAll('.theme-opt').forEach(o => o.classList.remove('active'));
+        activeOpt.classList.add('active');
+    }
+}
+
+// Start app
+startCamera();

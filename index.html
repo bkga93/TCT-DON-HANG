@@ -3,98 +3,85 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>TCT DON HANG - Camera Pro</title>
+    <title>TCT Multi-QR Scanner Pro</title>
     <link rel="stylesheet" href="style.css">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <script src="https://unpkg.com/html5-qrcode"></script>
-    <script src="https://unpkg.com/tesseract.js@5.0.3/dist/tesseract.min.js"></script>
-    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Outfit:wght@500;700&display=swap" rel="stylesheet">
+    <!-- ZXing Library for multi-barcode detection -->
+    <script src="https://unpkg.com/@zxing/library@latest"></script>
 </head>
-<body>
+<body class="theme-dark-1">
     <div class="app-container">
-        <!-- Main Dashboard (Home) -->
-        <main id="dashboard" class="dashboard">
-            <header>
-                <div class="logo">
-                    <i data-lucide="package"></i>
-                    <h1>TCT DON HANG</h1>
-                </div>
-                <button id="open-camera-btn" class="main-action-btn">
-                    <i data-lucide="camera"></i> Mở Camera
-                </button>
-            </header>
+        <header>
+            <h1>TCT SCANNER PRO</h1>
+        </header>
 
-            <section class="history-section">
-                <div class="section-header">
-                    <h2><i data-lucide="history"></i> Lịch sử quét</h2>
-                    <button id="clear-btn" class="text-btn">Xóa hết</button>
+        <main>
+            <div class="viewfinder-container">
+                <video id="video" autoplay playsinline muted></video>
+                <div class="scanning-line" id="scanLine"></div>
+                <canvas id="captureCanvas" style="display: none;"></canvas>
+            </div>
+
+            <div class="controls">
+                <button id="captureBtn" class="btn btn-primary">
+                    <span class="icon">📸</span> CHỤP & QUÉT TẤT CẢ QR
+                </button>
+                <button id="switchCamBtn" class="btn">
+                    <span class="icon">🔄</span> ĐỔI CAMERA
+                </button>
+                <button id="settingsBtn" class="btn">
+                    <span class="icon">🎨</span> CÀI ĐẶT GIAO DIỆN
+                </button>
+            </div>
+
+            <div id="resultSection" class="result-board">
+                <div class="result-header">
+                    <h3>Kết quả quét được (<span id="qrCount">0</span>)</h3>
+                    <button id="closeResultBtn" class="btn" style="padding: 8px 12px; font-size: 0.8rem;">Đóng</button>
                 </div>
-                <div id="results-list" class="results-list">
-                    <div class="empty-state">
-                        <i data-lucide="scan"></i>
-                        <p>Nhấn "Mở Camera" để bắt đầu</p>
-                    </div>
+                <div style="max-height: 300px; overflow-y: auto;">
+                    <table class="result-table">
+                        <thead>
+                            <tr>
+                                <th>Nội dung</th>
+                                <th>Hành động</th>
+                            </tr>
+                        </thead>
+                        <tbody id="resultBody">
+                            <!-- Kết quả sẽ hiện ở đây -->
+                        </tbody>
+                    </table>
                 </div>
-            </section>
+            </div>
         </main>
 
-        <!-- Fullscreen Camera Interface -->
-        <div id="camera-interface" class="camera-interface hidden">
-            <div id="reader"></div>
+        <div class="copyright">Thực hiện bởi NVH</div>
+    </div>
+
+    <!-- Settings Modal -->
+    <div id="settingsModal" class="modal">
+        <div class="modal-content">
+            <button class="close-btn" id="closeSettingsModal">&times;</button>
+            <h2 style="margin-bottom: 20px; font-family: 'Outfit';">Chọn Theme</h2>
             
-            <!-- Camera Overlays -->
-            <div class="camera-ui">
-                <div class="top-bar">
-                    <button id="close-camera-btn" class="icon-btn">
-                        <i data-lucide="x"></i>
-                    </button>
-                </div>
-
-                <div class="viewfinder">
-                    <div class="viewfinder-corners"></div>
-                </div>
-
-                <div class="bottom-bar">
-                    <div class="shutter-container">
-                        <button id="shutter-btn" class="shutter-btn"></button>
-                    </div>
-                </div>
+            <p style="font-size: 0.9rem; opacity: 0.7; margin-bottom: 10px;">Themes Tối</p>
+            <div class="theme-grid" id="darkThemes">
+                <div class="theme-opt active" style="background: #2D122A;" data-theme="theme-dark-1"></div>
+                <div class="theme-opt" style="background: #0d1117;" data-theme="theme-dark-2"></div>
+                <div class="theme-opt" style="background: #121212;" data-theme="theme-dark-3"></div>
+                <div class="theme-opt" style="background: #1a1a2e;" data-theme="theme-dark-4"></div>
+                <div class="theme-opt" style="background: #0b2027;" data-theme="theme-dark-5"></div>
             </div>
 
-            <!-- Analysis HUD -->
-            <div id="analysis-hud" class="analysis-hud hidden">
-                <div class="spinner-ios"></div>
-                <p id="hud-message">Đang nạp bộ máy OCR...</p>
-                <div class="hud-progress">
-                    <div id="hud-progress-bar" class="hud-progress-fill"></div>
-                </div>
-            </div>
-            
-            <div id="flash-effect" class="flash-effect"></div>
-        </div>
-
-        <!-- Result Drawer (Sheet) -->
-        <div id="result-drawer" class="result-drawer hidden">
-            <div class="drawer-handle"></div>
-            <div class="drawer-header">
-                <h3>Kết quả phân tích</h3>
-                <button id="close-drawer-btn" class="icon-btn">
-                    <i data-lucide="chevron-down"></i>
-                </button>
-            </div>
-            <div id="drawer-content" class="drawer-content">
-                <!-- Results cards go here -->
-            </div>
-            <div class="drawer-footer">
-                <button id="copy-btn" class="secondary-btn">
-                    <i data-lucide="copy"></i> Copy tất cả
-                </button>
+            <p style="font-size: 0.9rem; opacity: 0.7; margin: 20px 0 10px;">Themes Sáng</p>
+            <div class="theme-grid" id="lightThemes">
+                <div class="theme-opt" style="background: #f0f2f5;" data-theme="theme-light-1"></div>
+                <div class="theme-opt" style="background: #fffaf0;" data-theme="theme-light-2"></div>
+                <div class="theme-opt" style="background: #f8fafc;" data-theme="theme-light-3"></div>
+                <div class="theme-opt" style="background: #faf5ff;" data-theme="theme-light-4"></div>
             </div>
         </div>
-
-        <div id="toast-container"></div>
     </div>
 
     <script src="app.js"></script>
