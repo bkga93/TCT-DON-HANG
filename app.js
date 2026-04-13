@@ -137,12 +137,15 @@ async function runUltimateScan() {
             detected.forEach(d => results.push({ type: d.format === 'qr_code' ? 'qr' : 'barcode', text: d.rawValue }));
         }
 
-        // 2. ZXing Fallback (Iterative)
-        if (results.length === 0) {
-            showProgress(40, "Đang quét chuyên sâu (ZXing)...");
-            const zxingResults = await scanZXingIterative(canvas);
-            zxingResults.forEach(r => results.push({ type: 'qr', text: r.text }));
-        }
+        // 2. ZXing Deep Scan (Always run to ensure nothing is missed)
+        showProgress(40, "Đang quét chuyên sâu QR...");
+        const zxingResults = await scanZXingIterative(canvas);
+        zxingResults.forEach(r => {
+            // Check if already found by native API
+            if (!results.some(existing => existing.text === r.text)) {
+                results.push({ type: 'qr', text: r.text });
+            }
+        });
 
         // 3. OCR (Tesseract.js) with Preprocessing
         showProgress(60, "Đang tối ưu ảnh & Đọc chữ...");
