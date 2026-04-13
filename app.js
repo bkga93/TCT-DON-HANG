@@ -1,6 +1,6 @@
 /**
- * TCT Ultimate Multi-Scanner Pro - Logic v1.3.6
- * Chế độ Surgeon Precision (Tiled OCR + Strict Regex)
+ * TCT Ultimate Multi-Scanner Pro - Logic v1.3.8
+ * Chế độ Smart Product Scan (Lọc mã rác QR & Bắt Serial REM...)
  * Thực hiện bởi NVH
  */
 
@@ -126,7 +126,7 @@ async function scanCanvasHyper(targetCanvas) {
 
     if ('BarcodeDetector' in window) {
         try {
-            const formats = ['qr_code', 'code_128', 'code_39', 'ean_13', 'itf', 'upc_a'];
+            const formats = ['qr_code', 'code_128', 'code_39', 'ean_13', 'itf', 'upc_a', 'upc_e'];
             const detector = new BarcodeDetector({ formats });
             const detected = await detector.detect(targetCanvas);
             detected.forEach(d => findings.push({ type: d.format === 'qr_code' ? 'qr' : 'barcode', text: d.rawValue }));
@@ -145,14 +145,14 @@ async function scanCanvasHyper(targetCanvas) {
     return findings;
 }
 
-// --- The Ultra-Precision Scanning Flow ---
+// --- The Ultra-Precision Smart Scanning Flow ---
 
 async function runUltimateScan(sourceCanvas) {
     const results = [];
-    showProgress(0, "Khởi tạo Surgeon Precision Scan v1.3.6...");
+    showProgress(0, "Khởi tạo Smart Product Scan v1.3.8...");
     
     try {
-        // Step 1: Global Scan (Multi-Thresholds)
+        // Step 1: Global Scan
         const filters = ['original', 'contrast'];
         for (let i = 0; i < filters.length; i++) {
             showProgress(5 + (i * 5), `Quét toàn cục...`);
@@ -195,22 +195,26 @@ async function runUltimateScan(sourceCanvas) {
                 
                 const fN = await scanCanvasHyper(tileCanvas);
                 fN.forEach(f => {
-                    const cleanF = f.type === 'barcode' ? extractSerial(f.text) || f.text : f.text;
-                    if (!results.some(r => r.text === cleanF)) results.push({...f, text: cleanF});
+                    // Try to extract a clean serial if it's a barcode
+                    const cleanF = f.type === 'barcode' ? (extractSerial(f.text) || f.text) : f.text;
+                    if (!results.some(r => r.text === cleanF)) {
+                        results.push({...f, text: cleanF});
+                    }
                 });
             }
         }
 
         // Step 3: Deep Tiled OCR for Serial Numbers
-        showProgress(60, "Bóc tách Serial No (Deep OCR)...");
+        showProgress(60, "Bóc tách Serial Sản phẩm...");
         const slices = [
             { y: 0, h: sourceCanvas.height }, // Whole
-            { y: Math.floor(sourceCanvas.height * 0.5), h: Math.floor(sourceCanvas.height * 0.5) } // Bottom half
+            { y: 0, h: Math.floor(sourceCanvas.height * 0.4) }, // Top region (Product labels)
+            { y: Math.floor(sourceCanvas.height * 0.55), h: Math.floor(sourceCanvas.height * 0.45) } // Bottom region (Shipping labels)
         ];
 
         for (let i = 0; i < slices.length; i++) {
-            const p = i === 0 ? "Toàn ảnh" : "Vùng dưới";
-            showProgress(60 + (i * 20), `Đọc chữ (${p})...`);
+            const p = i === 0 ? "Toàn bộ" : (i === 1 ? "Vùng trên" : "Vùng dưới");
+            showProgress(60 + (i * 10), `Đọc chữ (${p})...`);
 
             const sliceCanvas = document.createElement('canvas');
             sliceCanvas.width = Math.min(sourceCanvas.width, 2200);
@@ -222,7 +226,7 @@ async function runUltimateScan(sourceCanvas) {
             const ocrData = await Tesseract.recognize(sliceCanvas, 'eng', {
                 logger: m => {
                     if (m.status === 'recognizing text' && i === 0) {
-                        showProgress(60 + (m.progress * 15), `Đang bóc chữ: ${Math.round(m.progress * 100)}%`);
+                        showProgress(60 + (m.progress * 10), `Đang bóc chữ: ${Math.round(m.progress * 100)}%`);
                     }
                 }
             });
@@ -255,7 +259,7 @@ function applyFilters(canv, type) {
     const data = imageData.data;
     
     if (type === 'contrast') {
-        const contrast = 1.7; // Precision contrast
+        const contrast = 1.7;
         const factor = (259 * (contrast + 255)) / (255 * (259 - contrast));
         for (let i = 0; i < data.length; i += 4) {
             data[i] = factor * (data[i] - 128) + 128;
@@ -266,17 +270,30 @@ function applyFilters(canv, type) {
     ctx.putImageData(imageData, 0, 0);
 }
 
-// --- Utils ---
+// --- Logic Filters (Core) ---
 
 function extractSerial(text) {
+    // 1. RS Pattern (Shipping label)
     const rsMatch = text.match(/\bRS[0-9]{8,15}\b/i);
     if (rsMatch) return rsMatch[0].toUpperCase();
     
-    const sMatch = text.match(/(?:Serial|Series|No|S\/N)[:\.\s]*([A-Z0-9]{8,15})/i);
+    // 2. REM Pattern (Product box)
+    const remMatch = text.match(/\bREM[0-9]{8,15}\b/i);
+    if (remMatch) return remMatch[0].toUpperCase();
+
+    // 3. Generic Serial/SN/Series
+    const sMatch = text.match(/(?:Serial|Series|No|S\/N|S\/N)[:\.\s]*([A-Z0-9]{8,20})/i);
     if (sMatch) return sMatch[1].toUpperCase();
 
     return null;
 }
+
+function isUselessQR(text) {
+    const junk = ['weixin.qq.com', 'zalo.me', 'facebook.com', 'youtube.com', 'instagram.com', 'tiktok.com', 't.me'];
+    return junk.some(domain => text.toLowerCase().includes(domain));
+}
+
+// --- Utils ---
 
 async function scanZXingIterative(sourceCanvas) {
     const tempResults = [];
@@ -326,6 +343,9 @@ function displayResults(results) {
     const unique = [];
     const seen = new Set();
     results.forEach(r => {
+        // Filter out useless QRs
+        if (r.type === 'qr' && isUselessQR(r.text)) return;
+
         const key = r.type + ':' + r.text;
         if (!seen.has(key)) {
             seen.add(key);
@@ -338,7 +358,7 @@ function displayResults(results) {
     if (unique.length > 0) {
         unique.forEach(res => {
             const row = document.createElement('tr');
-            const typeLabel = res.type === 'qr' ? 'QR Code' : (res.type === 'barcode' ? 'Mã vạch' : 'Số Serial');
+            const typeLabel = res.type === 'qr' ? 'Mã Đơn QR' : (res.type === 'barcode' ? 'Mã Vạch' : 'Số Serial');
             row.innerHTML = `
                 <td style="word-break: break-all;">
                     <span class="type-badge type-${res.type}">${typeLabel}</span>
