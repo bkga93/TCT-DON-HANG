@@ -27,9 +27,15 @@
                 <button id="captureBtn" class="btn btn-primary">
                     <span class="icon">📸</span> CHỤP & QUÉT TẤT CẢ QR
                 </button>
-                <button id="switchCamBtn" class="btn">
-                    <span class="icon">🔄</span> ĐỔI CAMERA
-                </button>
+                <div style="display: flex; gap: 10px; width: 100%;">
+                    <button id="uploadBtn" class="btn" style="flex: 1;">
+                        <span class="icon">📁</span> CHỌN ẢNH
+                    </button>
+                    <button id="switchCamBtn" class="btn" style="flex: 1;">
+                        <span class="icon">🔄</span> ĐỔI CAM
+                    </button>
+                </div>
+                <input type="file" id="fileInput" accept="image/*" style="display: none;">
                 <button id="settingsBtn" class="btn">
                     <span class="icon">🎨</span> CÀI ĐẶT GIAO DIỆN
                 </button>

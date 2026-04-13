@@ -14,13 +14,14 @@ const qrCount = document.getElementById('qrCount');
 const scanLine = document.getElementById('scanLine');
 const settingsModal = document.getElementById('settingsModal');
 
+const uploadBtn = document.getElementById('uploadBtn');
+const fileInput = document.getElementById('fileInput');
+
 let currentStream = null;
 let useFrontCamera = false;
 
-// Initialize ZXing
+// Initialize ZXing - Fallback to a simpler approach if constructors are missing
 const codeReader = new ZXing.BrowserMultiFormatReader();
-const hints = new Map();
-hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, [ZXing.BarcodeFormat.QR_CODE]);
 
 // --- Camera Management ---
 
@@ -42,8 +43,8 @@ async function startCamera() {
         video.srcObject = currentStream;
         scanLine.style.display = 'block';
     } catch (err) {
-        console.error("Error accessing camera:", err);
-        alert("Không thể truy cập camera. Vui lòng cấp quyền.");
+        console.warn("Camera error (possibly none available):", err);
+        // Do not alert, just log. The user might want to use file upload instead.
     }
 }
 
@@ -52,35 +53,82 @@ switchCamBtn.addEventListener('click', () => {
     startCamera();
 });
 
-// --- QR Detection Logic ---
+// --- Upload Logic ---
+
+uploadBtn.addEventListener('click', () => fileInput.click());
+
+fileInput.addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+        const img = new Image();
+        img.onload = () => {
+            canvas.width = img.width;
+            canvas.height = img.height;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0);
+            scanMultipleQRs();
+        };
+        img.src = event.target.result;
+    };
+    reader.readAsDataURL(file);
+});
+
+// --- QR Detection Logic (Iterative Masking to handle multiple QRs) ---
 
 async function scanMultipleQRs() {
-    // 1. Capture current frame to canvas
+    const results = [];
     const context = canvas.getContext('2d');
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+    
+    // Create a copy of the canvas for iterative masking
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = canvas.width;
+    tempCanvas.height = canvas.height;
+    const tempCtx = tempCanvas.getContext('2d');
+    tempCtx.drawImage(canvas, 0, 0);
 
-    // 2. Prepare ZXing multiple reader
-    try {
-        const luminanceSource = new ZXing.HTMLCanvasElementLuminanceSource(canvas);
-        const binarizer = new ZXing.HybridBinarizer(luminanceSource);
-        const binaryBitmap = new ZXing.BinaryBitmap(binarizer);
+    let foundAll = false;
+    let attempts = 0;
+    const maxAttempts = 10; // Limit to prevent infinite loops
 
-        const multiFormatReader = new ZXing.MultiFormatReader();
-        multiFormatReader.setHints(hints);
-        const multiReader = new ZXing.GenericMultipleBarcodeReader(multiFormatReader);
+    while (!foundAll && attempts < maxAttempts) {
+        try {
+            // Use decodeFromCanvas which is more stable across ZXing versions
+            const result = await codeReader.decodeFromCanvas(tempCanvas);
+            
+            // Avoid duplicates
+            if (!results.some(r => r.text === result.text)) {
+                results.push(result);
+            }
 
-        const results = multiReader.decodeMultiple(binaryBitmap, hints);
-        
-        displayResults(results);
-    } catch (err) {
-        if (err instanceof ZXing.NotFoundException) {
-            alert("Không tìm thấy mã QR nào trong ảnh. Hãy thử lại!");
-        } else {
-            console.error("Scan error:", err);
-            alert("Có lỗi xảy ra khi quét: " + err.message);
+            // Mask the found QR to find the next one
+            const points = result.resultPoints;
+            if (points && points.length >= 3) {
+                tempCtx.fillStyle = 'black';
+                tempCtx.beginPath();
+                tempCtx.moveTo(points[0].x, points[0].y);
+                for (let i = 1; i < points.length; i++) {
+                    tempCtx.lineTo(points[i].x, points[i].y);
+                }
+                tempCtx.closePath();
+                tempCtx.fill();
+            } else {
+                // If we can't mask it, we stop to avoid infinite loop on same QR
+                foundAll = true;
+            }
+            attempts++;
+        } catch (err) {
+            // No more QR codes detected
+            foundAll = true;
         }
+    }
+
+    if (results.length > 0) {
+        displayResults(results);
+    } else {
+        alert("Không tìm thấy mã QR nào. Hãy thử camera khác hoặc ảnh rõ nét hơn!");
     }
 }
 
@@ -115,7 +163,16 @@ captureBtn.addEventListener('click', () => {
     video.style.opacity = '0.5';
     setTimeout(() => video.style.opacity = '1', 100);
     
-    scanMultipleQRs();
+    // 1. Capture current frame from video to canvas
+    if (currentStream) {
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        scanMultipleQRs();
+    } else {
+        alert("Camera chưa sẵn sàng. Vui lòng sử dụng tính năng 'CHỌN ẢNH'!");
+    }
 });
 
 document.getElementById('closeResultBtn').addEventListener('click', () => {
