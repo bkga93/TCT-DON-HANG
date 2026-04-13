@@ -1,6 +1,6 @@
 /**
- * TCT Ultimate Multi-Scanner Pro - Logic v1.3.5
- * Chế độ Clean Data Scan (Chỉ lấy QR & Serial No)
+ * TCT Ultimate Multi-Scanner Pro - Logic v1.3.6
+ * Chế độ Surgeon Precision (Tiled OCR + Strict Regex)
  * Thực hiện bởi NVH
  */
 
@@ -145,17 +145,17 @@ async function scanCanvasHyper(targetCanvas) {
     return findings;
 }
 
-// --- The Ultra-Selective Scanning Flow ---
+// --- The Ultra-Precision Scanning Flow ---
 
 async function runUltimateScan(sourceCanvas) {
     const results = [];
-    showProgress(0, "Khởi tạo Clean Data Scan v1.3.5...");
+    showProgress(0, "Khởi tạo Surgeon Precision Scan v1.3.6...");
     
     try {
-        // Step 1: Global Scan
+        // Step 1: Global Scan (Multi-Thresholds)
         const filters = ['original', 'contrast'];
         for (let i = 0; i < filters.length; i++) {
-            showProgress(5 + (i * 10), `Quét toàn cục (${filters[i]})...`);
+            showProgress(5 + (i * 5), `Quét toàn cục...`);
             const procCanvas = document.createElement('canvas');
             procCanvas.width = Math.min(sourceCanvas.width, 2000);
             procCanvas.height = (procCanvas.width / sourceCanvas.width) * sourceCanvas.height;
@@ -184,7 +184,7 @@ async function runUltimateScan(sourceCanvas) {
         for (let y = 0; y < rows; y++) {
             for (let x = 0; x < cols; x++) {
                 const step = (y * cols + x);
-                const progress = 25 + Math.floor((step / (rows * cols)) * 40);
+                const progress = 20 + Math.floor((step / (rows * cols)) * 40);
                 showProgress(progress, `Soi từng vùng ${step + 1}/16...`);
 
                 const startX = Math.floor(x * (sourceCanvas.width - tileW) / (cols - 1));
@@ -195,44 +195,45 @@ async function runUltimateScan(sourceCanvas) {
                 
                 const fN = await scanCanvasHyper(tileCanvas);
                 fN.forEach(f => {
-                    if (!results.some(r => r.text === f.text)) results.push(f);
-                });
-
-                applyFilters(tileCanvas, 'contrast');
-                const fC = await scanCanvasHyper(tileCanvas);
-                fC.forEach(f => {
-                    if (!results.some(r => r.text === f.text)) results.push(f);
+                    const cleanF = f.type === 'barcode' ? extractSerial(f.text) || f.text : f.text;
+                    if (!results.some(r => r.text === cleanF)) results.push({...f, text: cleanF});
                 });
             }
         }
 
-        // Step 3: OCR (Only for Serial Numbers)
-        showProgress(70, "Bóc tách Serial No...");
-        const ocrCanvas = document.createElement('canvas');
-        ocrCanvas.width = Math.min(sourceCanvas.width, 2500); 
-        ocrCanvas.height = (ocrCanvas.width / sourceCanvas.width) * sourceCanvas.height;
-        const ocrCtx = ocrCanvas.getContext('2d');
-        ocrCtx.drawImage(sourceCanvas, 0, 0, ocrCanvas.width, ocrCanvas.height);
-        applyFilters(ocrCanvas, 'contrast');
+        // Step 3: Deep Tiled OCR for Serial Numbers
+        showProgress(60, "Bóc tách Serial No (Deep OCR)...");
+        const slices = [
+            { y: 0, h: sourceCanvas.height }, // Whole
+            { y: Math.floor(sourceCanvas.height * 0.5), h: Math.floor(sourceCanvas.height * 0.5) } // Bottom half
+        ];
 
-        const ocrData = await Tesseract.recognize(ocrCanvas, 'vie+eng', {
-            logger: m => {
-                if (m.status === 'recognizing text') {
-                    showProgress(70 + (m.progress * 25), `Đọc chữ: ${Math.round(m.progress * 100)}%`);
-                }
-            }
-        });
+        for (let i = 0; i < slices.length; i++) {
+            const p = i === 0 ? "Toàn ảnh" : "Vùng dưới";
+            showProgress(60 + (i * 20), `Đọc chữ (${p})...`);
 
-        const lines = ocrData.data.lines;
-        lines.forEach(line => {
-            const cleanText = line.text.trim();
-            if (isUsefulText(cleanText)) {
-                // Deduplicate against already found QR/Barcodes
-                if (!results.some(r => r.text === cleanText)) {
-                    results.push({ type: 'text', text: cleanText });
+            const sliceCanvas = document.createElement('canvas');
+            sliceCanvas.width = Math.min(sourceCanvas.width, 2200);
+            sliceCanvas.height = (sliceCanvas.width / sourceCanvas.width) * slices[i].h;
+            const sCtx = sliceCanvas.getContext('2d');
+            sCtx.drawImage(sourceCanvas, 0, slices[i].y, sourceCanvas.width, slices[i].h, 0, 0, sliceCanvas.width, sliceCanvas.height);
+            applyFilters(sliceCanvas, 'contrast');
+
+            const ocrData = await Tesseract.recognize(sliceCanvas, 'eng', {
+                logger: m => {
+                    if (m.status === 'recognizing text' && i === 0) {
+                        showProgress(60 + (m.progress * 15), `Đang bóc chữ: ${Math.round(m.progress * 100)}%`);
+                    }
                 }
-            }
-        });
+            });
+
+            ocrData.data.lines.forEach(line => {
+                const serial = extractSerial(line.text);
+                if (serial && !results.some(r => r.text === serial)) {
+                    results.push({ type: 'text', text: serial });
+                }
+            });
+        }
 
         lastCapturedDataURL = sourceCanvas.toDataURL('image/jpeg', 0.8);
         showProgress(100, "Hoàn tất!");
@@ -254,7 +255,7 @@ function applyFilters(canv, type) {
     const data = imageData.data;
     
     if (type === 'contrast') {
-        const contrast = 1.8;
+        const contrast = 1.7; // Precision contrast
         const factor = (259 * (contrast + 255)) / (255 * (259 - contrast));
         for (let i = 0; i < data.length; i += 4) {
             data[i] = factor * (data[i] - 128) + 128;
@@ -266,6 +267,16 @@ function applyFilters(canv, type) {
 }
 
 // --- Utils ---
+
+function extractSerial(text) {
+    const rsMatch = text.match(/\bRS[0-9]{8,15}\b/i);
+    if (rsMatch) return rsMatch[0].toUpperCase();
+    
+    const sMatch = text.match(/(?:Serial|Series|No|S\/N)[:\.\s]*([A-Z0-9]{8,15})/i);
+    if (sMatch) return sMatch[1].toUpperCase();
+
+    return null;
+}
 
 async function scanZXingIterative(sourceCanvas) {
     const tempResults = [];
@@ -293,15 +304,6 @@ async function scanZXingIterative(sourceCanvas) {
         } catch (e) { break; }
     }
     return tempResults;
-}
-
-function isUsefulText(text) {
-    const lower = text.toLowerCase().trim();
-    if (lower.length < 5) return false;
-    
-    // Only Serial/Series/RS
-    const serialKeywords = ['serial', 'series', 'rs'];
-    return serialKeywords.some(k => lower.includes(k));
 }
 
 function showProgress(percent, text) {
@@ -336,7 +338,7 @@ function displayResults(results) {
     if (unique.length > 0) {
         unique.forEach(res => {
             const row = document.createElement('tr');
-            const typeLabel = res.type === 'qr' ? 'QR Code' : (res.type === 'barcode' ? 'Mã vạch' : 'Văn bản');
+            const typeLabel = res.type === 'qr' ? 'QR Code' : (res.type === 'barcode' ? 'Mã vạch' : 'Số Serial');
             row.innerHTML = `
                 <td style="word-break: break-all;">
                     <span class="type-badge type-${res.type}">${typeLabel}</span>
