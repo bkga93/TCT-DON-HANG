@@ -1,6 +1,6 @@
 /**
- * TCT Ultimate Multi-Scanner Pro - Logic v1.3.0
- * Kỹ thuật Hyper Deep Scan (jsQR + Multi-Threshold + Native Tiling)
+ * TCT Ultimate Multi-Scanner Pro - Logic v1.3.5
+ * Chế độ Clean Data Scan (Chỉ lấy QR & Serial No)
  * Thực hiện bởi NVH
  */
 
@@ -61,7 +61,7 @@ async function startCamera() {
     const constraints = {
         video: {
             facingMode: useFrontCamera ? "user" : "environment",
-            width: { ideal: 4096 }, // Target 4K if available for maximum detail
+            width: { ideal: 4096 },
             height: { ideal: 2160 }
         }
     };
@@ -99,7 +99,6 @@ function processImageFile(file) {
     reader.onload = (event) => {
         const img = new Image();
         img.onload = () => {
-            // No downscaling for the master canvas to preserve native resolution for tiles
             canvas.width = img.width;
             canvas.height = img.height;
             const ctx = canvas.getContext('2d');
@@ -116,7 +115,6 @@ function processImageFile(file) {
 async function scanCanvasHyper(targetCanvas) {
     const findings = [];
     
-    // 1. jsQR (Specialized for QR - very robust)
     try {
         const ctx = targetCanvas.getContext('2d');
         const imgData = ctx.getImageData(0, 0, targetCanvas.width, targetCanvas.height);
@@ -126,7 +124,6 @@ async function scanCanvasHyper(targetCanvas) {
         }
     } catch (e) {}
 
-    // 2. BarcodeDetector (Native)
     if ('BarcodeDetector' in window) {
         try {
             const formats = ['qr_code', 'code_128', 'code_39', 'ean_13', 'itf', 'upc_a'];
@@ -136,7 +133,6 @@ async function scanCanvasHyper(targetCanvas) {
         } catch (e) {}
     }
     
-    // 3. ZXing (Iterative Fallback)
     try {
         const zxingResults = await scanZXingIterative(targetCanvas);
         zxingResults.forEach(r => {
@@ -149,19 +145,19 @@ async function scanCanvasHyper(targetCanvas) {
     return findings;
 }
 
-// --- The Nuclear Scanning Flow ---
+// --- The Ultra-Selective Scanning Flow ---
 
 async function runUltimateScan(sourceCanvas) {
     const results = [];
-    showProgress(0, "Khởi tạo Hệ thống Siêu Quét...");
+    showProgress(0, "Khởi tạo Clean Data Scan v1.3.5...");
     
     try {
-        // Step 1: Global Scan with Multi-Thresholds
-        const filters = ['original', 'contrast', 'binary'];
+        // Step 1: Global Scan
+        const filters = ['original', 'contrast'];
         for (let i = 0; i < filters.length; i++) {
-            showProgress(5 + (i * 5), `Quét toàn cục (Chế độ: ${filters[i]})...`);
+            showProgress(5 + (i * 10), `Quét toàn cục (${filters[i]})...`);
             const procCanvas = document.createElement('canvas');
-            procCanvas.width = Math.min(sourceCanvas.width, 2000); // Global scan doesn't need 4000px
+            procCanvas.width = Math.min(sourceCanvas.width, 2000);
             procCanvas.height = (procCanvas.width / sourceCanvas.width) * sourceCanvas.height;
             const pCtx = procCanvas.getContext('2d');
             pCtx.drawImage(sourceCanvas, 0, 0, procCanvas.width, procCanvas.height);
@@ -174,10 +170,10 @@ async function runUltimateScan(sourceCanvas) {
             });
         }
 
-        // Step 2: Native Tiling Scan (4x4 Grid on ORIGINAL resolution)
+        // Step 2: Native Tiling Scan (4x4 Grid)
         const cols = 4;
         const rows = 4;
-        const tileW = Math.floor(sourceCanvas.width / 2.5); // Large overlap
+        const tileW = Math.floor(sourceCanvas.width / 2.5);
         const tileH = Math.floor(sourceCanvas.height / 2.5);
         
         const tileCanvas = document.createElement('canvas');
@@ -189,7 +185,7 @@ async function runUltimateScan(sourceCanvas) {
             for (let x = 0; x < cols; x++) {
                 const step = (y * cols + x);
                 const progress = 25 + Math.floor((step / (rows * cols)) * 40);
-                showProgress(progress, `Quét sâu vùng ${step + 1}/16 (Độ phân giải gốc)...`);
+                showProgress(progress, `Soi từng vùng ${step + 1}/16...`);
 
                 const startX = Math.floor(x * (sourceCanvas.width - tileW) / (cols - 1));
                 const startY = Math.floor(y * (sourceCanvas.height - tileH) / (rows - 1));
@@ -197,22 +193,21 @@ async function runUltimateScan(sourceCanvas) {
                 tileCtx.clearRect(0, 0, tileW, tileH);
                 tileCtx.drawImage(sourceCanvas, startX, startY, tileW, tileH, 0, 0, tileW, tileH);
                 
-                // Scan tile with 2 filters (Original and Contrast)
-                const findingsNormal = await scanCanvasHyper(tileCanvas);
-                findingsNormal.forEach(f => {
+                const fN = await scanCanvasHyper(tileCanvas);
+                fN.forEach(f => {
                     if (!results.some(r => r.text === f.text)) results.push(f);
                 });
 
                 applyFilters(tileCanvas, 'contrast');
-                const findingsContrast = await scanCanvasHyper(tileCanvas);
-                findingsContrast.forEach(f => {
+                const fC = await scanCanvasHyper(tileCanvas);
+                fC.forEach(f => {
                     if (!results.some(r => r.text === f.text)) results.push(f);
                 });
             }
         }
 
-        // Step 3: OCR for Serial Numbers
-        showProgress(70, "Đang bóc tách số Series (OCR)...");
+        // Step 3: OCR (Only for Serial Numbers)
+        showProgress(70, "Bóc tách Serial No...");
         const ocrCanvas = document.createElement('canvas');
         ocrCanvas.width = Math.min(sourceCanvas.width, 2500); 
         ocrCanvas.height = (ocrCanvas.width / sourceCanvas.width) * sourceCanvas.height;
@@ -223,7 +218,7 @@ async function runUltimateScan(sourceCanvas) {
         const ocrData = await Tesseract.recognize(ocrCanvas, 'vie+eng', {
             logger: m => {
                 if (m.status === 'recognizing text') {
-                    showProgress(70 + (m.progress * 25), `Đang tìm số Series: ${Math.round(m.progress * 100)}%`);
+                    showProgress(70 + (m.progress * 25), `Đọc chữ: ${Math.round(m.progress * 100)}%`);
                 }
             }
         });
@@ -232,11 +227,13 @@ async function runUltimateScan(sourceCanvas) {
         lines.forEach(line => {
             const cleanText = line.text.trim();
             if (isUsefulText(cleanText)) {
-                results.push({ type: 'text', text: cleanText });
+                // Deduplicate against already found QR/Barcodes
+                if (!results.some(r => r.text === cleanText)) {
+                    results.push({ type: 'text', text: cleanText });
+                }
             }
         });
 
-        // Finalize
         lastCapturedDataURL = sourceCanvas.toDataURL('image/jpeg', 0.8);
         showProgress(100, "Hoàn tất!");
         setTimeout(() => hideProgress(), 500);
@@ -257,18 +254,12 @@ function applyFilters(canv, type) {
     const data = imageData.data;
     
     if (type === 'contrast') {
-        const contrast = 2.0;
+        const contrast = 1.8;
         const factor = (259 * (contrast + 255)) / (255 * (259 - contrast));
         for (let i = 0; i < data.length; i += 4) {
             data[i] = factor * (data[i] - 128) + 128;
             data[i + 1] = factor * (data[i + 1] - 128) + 128;
             data[i + 2] = factor * (data[i + 2] - 128) + 128;
-        }
-    } else if (type === 'binary') {
-        for (let i = 0; i < data.length; i += 4) {
-            const avg = (data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114);
-            const val = avg > 128 ? 255 : 0;
-            data[i] = data[i + 1] = data[i + 2] = val;
         }
     }
     ctx.putImageData(imageData, 0, 0);
@@ -306,21 +297,11 @@ async function scanZXingIterative(sourceCanvas) {
 
 function isUsefulText(text) {
     const lower = text.toLowerCase().trim();
-    if (lower.length < 4) return false;
-
-    // Common label keywords
-    const keywords = ['serial', 'series', 'no.', 's/n', 'no:', 'part no', 'hcb', 'mã đơn', 'mã vận đơn', 'vận đơn'];
-    if (keywords.some(k => lower.includes(k))) return true;
+    if (lower.length < 5) return false;
     
-    // Specific Shopee/Model patterns
-    if (/RS[0-9]{5,}/i.test(text)) return true;
-    if (/SPX[A-Z0-9]{8,}/i.test(text)) return true;
-    if (/HCB[A-Z0-9\-]{5,}/i.test(text)) return true;
-
-    // Catch-all for what looks like a code (Mix of letters and numbers, >= 8 chars)
-    if (text.length >= 8 && /[0-9]/.test(text) && /[A-Z]/i.test(text)) return true;
-
-    return false;
+    // Only Serial/Series/RS
+    const serialKeywords = ['serial', 'series', 'rs'];
+    return serialKeywords.some(k => lower.includes(k));
 }
 
 function showProgress(percent, text) {
