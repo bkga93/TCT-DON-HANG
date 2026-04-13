@@ -243,12 +243,23 @@ function preprocessCanvasForOCR(canv) {
 }
 
 function isUsefulText(text) {
-    // Filter out short noise or common non-data text
-    if (text.length < 4) return false;
-    // Regex to find things that look like serial numbers or codes (contains numbers and letters)
-    if (/[0-9]/.test(text) && text.length > 5) return true;
-    // Or Uppercase words (potential category/ID)
-    if (/^[A-Z0-9\-\. ]+$/.test(text)) return true;
+    const lower = text.toLowerCase();
+    
+    // Keywords for Serial Numbers
+    if (lower.includes('serial') || lower.includes('series') || lower.includes('no.') || lower.includes('s/n') || lower.includes('no:')) {
+        return true;
+    }
+    
+    // Pattern for typical serials (e.g. RS... followed by digits)
+    if (/RS[0-9]{5,}/.test(text)) {
+        return true;
+    }
+
+    // Pattern for Order IDs (usually long alphanumeric strings like SPX...)
+    if (/SPX[A-Z0-9]{10,}/i.test(text)) {
+        return true;
+    }
+
     return false;
 }
 
